@@ -72,12 +72,13 @@ export async function fetchDashboardData(): Promise<DashboardData> {
   const meta = await sheets.spreadsheets.get({ spreadsheetId: SPREADSHEET_ID });
   const sheetList = meta.data.sheets ?? [];
 
-  // 2. Fetch all tabs in one batchGet
+  // 2. Fetch all tabs in one batchGet — FORMATTED_VALUE so dates/months come back as
+  //    readable strings ("Jan 2026") rather than serial numbers (45928).
   const ranges = sheetList.map(s => `'${s.properties?.title}'!A1:AJ500`);
   const batchRes = await sheets.spreadsheets.values.batchGet({
     spreadsheetId: SPREADSHEET_ID,
     ranges,
-    valueRenderOption: 'UNFORMATTED_VALUE',
+    valueRenderOption: 'FORMATTED_VALUE',
   });
 
   // 3. Merge all grids into one (different sections live in different tabs)
@@ -96,19 +97,30 @@ export async function fetchDashboardData(): Promise<DashboardData> {
   const clientGrid = allGrids.find(g => findRow(g.grid, 'Client', 'Service', 'Pod'))?.grid
     ?? plGrid;
 
-  // 6. Determine months from the "Income Summary" header row
-  const incomeSummaryRow = findRow(plGrid, 'Income Summary');
-  const monthCols = (incomeSummaryRow?.row ?? [])
-    .slice(1)
+  // 6. Determine months — scan every row in plGrid looking for the one that has
+  //    the most cells matching "Mon YYYY" (e.g. "Jan 2026", "Feb 2026").
+  const MON_RE = /^(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec).{0,5}20\d\d/i;
+  let bestMonthRow: Row = [];
+  let bestMonthCount = 0;
+  for (const row of plGrid) {
+    const matches = row.filter(c => MON_RE.test(parseStr(c)));
+    if (matches.length > bestMonthCount) { bestMonthCount = matches.length; bestMonthRow = row; }
+  }
+  // Also try the Income Summary row as a fallback
+  if (bestMonthCount === 0) {
+    const isr = findRow(plGrid, 'Income Summary')?.row ?? [];
+    bestMonthRow = isr;
+  }
+  const monthCols = bestMonthRow
     .map(parseStr)
-    .filter(s => s.includes('20'))  // e.g. "Jan 2026"
-    .slice(0, 6);                    // up to 6 months
+    .filter(s => MON_RE.test(s) || s.includes('20'))
+    .slice(0, 6);
 
   const N = monthCols.length || 4;
 
   // 7. Status row (Actuals / Forecast)
   const statusRow = findRow(plGrid, 'Status')?.row ?? [];
-  const statuses = statusRow.slice(1).map(parseStr).filter(Boolean).slice(0, N);
+  const statuses = statusRow.slice(1).map(parseStr).filter(s => s === 'Actuals' || s === 'Forecast').slice(0, N);
 
   const months = monthCols.map((label, i) => ({
     label,
@@ -159,8 +171,8 @@ export async function fetchDashboardData(): Promise<DashboardData> {
   })).filter(c => c.values.some(v => v !== 0));
 
   // ── Clients (revenue by month) ──────────────────────────────────────────
-  // Find the header row in the client grid: Client | Status | Service | ...
-  const clientHeaderResult = findRow(clientGrid, 'Client', 'Service', 'Start Date', 'Jan');
+  // Find the header row: must contain Client + Status + Service + Start Date + at least one month col
+  const clientHeaderResult = findRow(clientGrid, 'Client', 'Status', 'Service', 'Start Date');
   const clientHeaderIdx = clientHeaderResult?.idx ?? -1;
 
   const clientRows: ClientRow[] = [];
@@ -278,11 +290,14 @@ export async function fetchDashboardData(): Promise<DashboardData> {
     const iLd  = hdr.findIndex(c => parseStr(c).toLowerCase().includes('leadership'));
     const iCS  = hdr.findIndex(c => parseStr(c).toLowerCase().includes('client success'));
 
+    const VALID_INTENSITY = new Set(['low', 'mid', 'medium', 'high']);
     for (let r = capHeader.idx + 1; r < capGrid.length; r++) {
       const row = capGrid[r];
       const service   = parseStr(row[iSv  >= 0 ? iSv  : 0]);
       const intensity = parseStr(row[iInt >= 0 ? iInt : 1]);
+      // Stop as soon as we hit a row that isn't a real capacity row
       if (!service || !intensity) continue;
+      if (!VALID_INTENSITY.has(intensity.toLowerCase())) continue;
       const mb  = parseNum(row[iMB >= 0 ? iMB : 2]);
       const ld  = parseNum(row[iLd >= 0 ? iLd : 3]);
       const cs  = parseNum(row[iCS >= 0 ? iCS : 4]);
