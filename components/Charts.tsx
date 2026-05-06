@@ -118,19 +118,34 @@ export function MarginChart({ labels, values, color, min, max }: {
 }
 
 // ── Stacked bar (revenue by client) ──────────────────────────────────────────
-export function StackedBarChart({ labels, datasets }: {
+export function StackedBarChart({ labels, datasets, statuses }: {
   labels: string[];
   datasets: { label: string; data: number[]; color: string }[];
+  statuses?: string[];
 }) {
+  // For forecast columns, use a dashed border + lighter fill
+  const buildDatasets = () => datasets.map(d => {
+    if (!statuses || statuses.every(s => s !== 'Forecast')) {
+      return { label: d.label, data: d.data, backgroundColor: d.color, borderRadius: 2, stack: 'main' };
+    }
+    return {
+      label: d.label,
+      data: d.data,
+      backgroundColor: d.data.map((_, i) =>
+        statuses[i] === 'Forecast' ? d.color.replace(/[\d.]+\)$/, '0.35)').replace(/^#/, 'rgba(').replace(/([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})$/i, (_, r, g, b) =>
+          `${parseInt(r, 16)},${parseInt(g, 16)},${parseInt(b, 16)},0.35)`) : d.color
+      ),
+      borderColor: statuses.map(s => s === 'Forecast' ? 'rgba(255,255,255,0.2)' : 'transparent'),
+      borderWidth: statuses.map(s => s === 'Forecast' ? 1 : 0),
+      borderDash: [4, 4],
+      borderRadius: 2,
+      stack: 'main',
+    };
+  });
+
   const config: ChartConfiguration = {
     type: 'bar',
-    data: {
-      labels,
-      datasets: datasets.map(d => ({
-        label: d.label, data: d.data,
-        backgroundColor: d.color, borderRadius: 2, stack: 'main',
-      })),
-    },
+    data: { labels, datasets: buildDatasets() },
     options: {
       responsive: true, maintainAspectRatio: false,
       plugins: {
@@ -241,6 +256,96 @@ export function HorizontalBarChart({ labels, datasets }: {
         y: { stacked: true, grid: { display: false }, ticks: { font: { size: 10 } } },
       },
     },
+  };
+  return <ChartCanvas config={config} />;
+}
+
+// ── Labeled line chart (dual lines with data labels + forecast shading) ────────
+export function LabeledLineChart({ labels, datasets, statuses }: {
+  labels: string[];
+  datasets: { label: string; data: number[]; color: string; fill: boolean }[];
+  statuses?: string[];
+}) {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const config: any = {
+    type: 'line',
+    data: {
+      labels,
+      datasets: datasets.map(d => ({
+        label: d.label,
+        data: d.data,
+        borderColor: d.color,
+        backgroundColor: d.fill
+          ? d.color.startsWith('#')
+            ? d.color + '22'
+            : d.color.replace(')', ', 0.13)').replace('rgb(', 'rgba(')
+          : 'transparent',
+        tension: 0.35,
+        pointRadius: 4,
+        pointBackgroundColor: d.color,
+        borderWidth: 2.5,
+        fill: d.fill,
+        pointHoverRadius: 6,
+        segment: statuses
+          ? {
+              borderDash: (ctx: { p1DataIndex: number }) =>
+                statuses[ctx.p1DataIndex] === 'Forecast' ? [5, 4] : [],
+            }
+          : undefined,
+      })),
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      interaction: { mode: 'index', intersect: false },
+      plugins: {
+        legend: { position: 'top', labels: { boxWidth: 10, boxHeight: 10, padding: 14 } },
+        datalabels: {
+          display: true,
+          align: 'top',
+          offset: 5,
+          font: { size: 10, weight: 700 },
+          color: (ctx: { datasetIndex: number }) => datasets[ctx.datasetIndex]?.color ?? '#fff',
+          formatter: (v: number) => fmt(v),
+        },
+        tooltip: {
+          callbacks: {
+            label: (ctx: { dataset: { label: string }; raw: number }) =>
+              ' ' + ctx.dataset.label + ': ' + fmtFull(ctx.raw),
+            afterBody: (items: { dataIndex: number }[]) => {
+              const i = items[0]?.dataIndex ?? 0;
+              return statuses?.[i] === 'Forecast' ? ['⟡ Forecast'] : [];
+            },
+          },
+        },
+      },
+      scales: {
+        x: { grid: { display: false } },
+        y: {
+          ticks: { callback: (v: number) => fmt(v) },
+          grid: { color: 'rgba(255,255,255,0.05)' },
+        },
+      },
+    },
+    plugins: statuses
+      ? [
+          {
+            id: 'forecastShade',
+            beforeDraw: (chart: { ctx: CanvasRenderingContext2D; chartArea: { top: number; bottom: number; left: number; right: number }; scales: { x: { getPixelForValue: (v: number) => number } } }) => {
+              const { ctx, chartArea, scales } = chart;
+              ctx.save();
+              statuses.forEach((s, i) => {
+                if (s !== 'Forecast') return;
+                const xLeft  = scales.x.getPixelForValue(i - 0.5);
+                const xRight = scales.x.getPixelForValue(i + 0.5);
+                ctx.fillStyle = 'rgba(255,255,255,0.03)';
+                ctx.fillRect(xLeft, chartArea.top, xRight - xLeft, chartArea.bottom - chartArea.top);
+              });
+              ctx.restore();
+            },
+          },
+        ]
+      : [],
   };
   return <ChartCanvas config={config} />;
 }
