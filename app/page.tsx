@@ -1,6 +1,25 @@
 'use client';
 
-import { useEffect, useState, useCallback, useMemo } from 'react';
+import { useEffect, useState, useCallback, useMemo, Component, type ReactNode } from 'react';
+
+// ── Error boundary ────────────────────────────────────────────────────────────
+class ErrorBoundary extends Component<{ children: ReactNode }, { error: string | null }> {
+  constructor(props: { children: ReactNode }) {
+    super(props);
+    this.state = { error: null };
+  }
+  static getDerivedStateFromError(e: Error) { return { error: e.message }; }
+  render() {
+    if (this.state.error) return (
+      <div className="error-box" style={{ margin: '40px auto', maxWidth: 600 }}>
+        <h3>Dashboard render error</h3>
+        <pre>{this.state.error}</pre>
+        <p style={{ marginTop: 10, fontSize: 12, color: 'var(--muted)' }}>Please hard-refresh (Cmd+Shift+R) to reload.</p>
+      </div>
+    );
+    return this.props.children;
+  }
+}
 import type { DashboardData } from '@/lib/types';
 import {
   TrendChart, MarginChart, StackedBarChart,
@@ -217,6 +236,7 @@ export default function Dashboard() {
   const mgPP   = prev >= 0 ? pp(pl.netMargin[pidx], pl.netMargin[prev]) : { cls: 'flat', str: '—' };
 
   return (
+    <ErrorBoundary>
     <>
       {/* ── TOP BAR ──────────────────────────────────────────────────── */}
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '14px 36px', borderBottom: '1px solid var(--card-border)', gap: 16, flexWrap: 'wrap' }}>
@@ -674,5 +694,6 @@ export default function Dashboard() {
         </div>
       </div>
     </>
+    </ErrorBoundary>
   );
 }

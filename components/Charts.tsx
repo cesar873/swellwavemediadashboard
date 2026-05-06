@@ -260,14 +260,13 @@ export function HorizontalBarChart({ labels, datasets }: {
   return <ChartCanvas config={config} />;
 }
 
-// ── Labeled line chart (dual lines with data labels + forecast shading) ────────
-export function LabeledLineChart({ labels, datasets, statuses }: {
+// ── Labeled line chart (dual lines with per-point data labels) ─────────────────
+export function LabeledLineChart({ labels, datasets }: {
   labels: string[];
   datasets: { label: string; data: number[]; color: string; fill: boolean }[];
   statuses?: string[];
 }) {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const config: any = {
+  const config: ChartConfiguration = {
     type: 'line',
     data: {
       labels,
@@ -275,23 +274,13 @@ export function LabeledLineChart({ labels, datasets, statuses }: {
         label: d.label,
         data: d.data,
         borderColor: d.color,
-        backgroundColor: d.fill
-          ? d.color.startsWith('#')
-            ? d.color + '22'
-            : d.color.replace(')', ', 0.13)').replace('rgb(', 'rgba(')
-          : 'transparent',
+        backgroundColor: d.fill ? (d.color + '22') : 'transparent',
         tension: 0.35,
         pointRadius: 4,
         pointBackgroundColor: d.color,
         borderWidth: 2.5,
         fill: d.fill,
         pointHoverRadius: 6,
-        segment: statuses
-          ? {
-              borderDash: (ctx: { p1DataIndex: number }) =>
-                statuses[ctx.p1DataIndex] === 'Forecast' ? [5, 4] : [],
-            }
-          : undefined,
       })),
     },
     options: {
@@ -304,48 +293,25 @@ export function LabeledLineChart({ labels, datasets, statuses }: {
           display: true,
           align: 'top',
           offset: 5,
-          font: { size: 10, weight: 700 },
-          color: (ctx: { datasetIndex: number }) => datasets[ctx.datasetIndex]?.color ?? '#fff',
+          font: { size: 10, weight: 700 as const },
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          color: (ctx: any) => datasets[ctx.datasetIndex]?.color ?? '#fff',
           formatter: (v: number) => fmt(v),
         },
         tooltip: {
           callbacks: {
-            label: (ctx: { dataset: { label: string }; raw: number }) =>
-              ' ' + ctx.dataset.label + ': ' + fmtFull(ctx.raw),
-            afterBody: (items: { dataIndex: number }[]) => {
-              const i = items[0]?.dataIndex ?? 0;
-              return statuses?.[i] === 'Forecast' ? ['⟡ Forecast'] : [];
-            },
+            label: ctx => ' ' + ctx.dataset.label + ': ' + fmtFull(ctx.raw as number),
           },
         },
       },
       scales: {
         x: { grid: { display: false } },
         y: {
-          ticks: { callback: (v: number) => fmt(v) },
+          ticks: { callback: v => fmt(v as number) },
           grid: { color: 'rgba(255,255,255,0.05)' },
         },
       },
     },
-    plugins: statuses
-      ? [
-          {
-            id: 'forecastShade',
-            beforeDraw: (chart: { ctx: CanvasRenderingContext2D; chartArea: { top: number; bottom: number; left: number; right: number }; scales: { x: { getPixelForValue: (v: number) => number } } }) => {
-              const { ctx, chartArea, scales } = chart;
-              ctx.save();
-              statuses.forEach((s, i) => {
-                if (s !== 'Forecast') return;
-                const xLeft  = scales.x.getPixelForValue(i - 0.5);
-                const xRight = scales.x.getPixelForValue(i + 0.5);
-                ctx.fillStyle = 'rgba(255,255,255,0.03)';
-                ctx.fillRect(xLeft, chartArea.top, xRight - xLeft, chartArea.bottom - chartArea.top);
-              });
-              ctx.restore();
-            },
-          },
-        ]
-      : [],
   };
   return <ChartCanvas config={config} />;
 }
