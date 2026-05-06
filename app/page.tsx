@@ -167,6 +167,12 @@ export default function Dashboard() {
   useEffect(() => { load(); }, [load]);
   useEffect(() => { const t = setInterval(load, 5 * 60 * 1000); return () => clearInterval(t); }, [load]);
 
+  // ── useMemo MUST be before any early returns (Rules of Hooks) ──────────────
+  const insights = useMemo(
+    () => data ? buildInsights(data.pl, data.clients) : [],
+    [data]
+  );
+
   if (!data && !error) return (
     <>
       <header className="header">
@@ -196,9 +202,6 @@ export default function Dashboard() {
   const ytdCogs = pl.cogs.slice(0, pidx + 1).reduce((a, b) => a + b, 0);
   const ytdOpex = pl.opex.slice(0, pidx + 1).reduce((a, b) => a + b, 0);
   const avgNet  = pl.netMargin.slice(0, pidx + 1).reduce((a, b) => a + b, 0) / (pidx + 1);
-
-  // Insights
-  const insights = useMemo(() => buildInsights(pl, clients), [pl, clients]);
 
   // Client aggregations
   const clientMonthly = clients.reduce<Record<string, number[]>>((acc, c) => {
