@@ -22,8 +22,8 @@ class ErrorBoundary extends Component<{ children: ReactNode }, { error: string |
 }
 import type { DashboardData } from '@/lib/types';
 import {
-  DualMarginChart, StackedBarChart,
-  DonutChart, HorizontalBarChart, LabeledLineChart,
+  TrendChart, DualMarginChart, StackedBarChart,
+  DonutChart, HorizontalBarChart,
   BLUE, GREEN, RED, AMBER, PURPLE, YELLOW,
   fmt, fmtFull,
 } from '@/components/Charts';
@@ -83,21 +83,19 @@ function buildInsights(pl: DashboardData['pl'], clients: DashboardData['clients'
 }
 
 // ── Insights Panel ────────────────────────────────────────────────────────────
-function InsightsPanel({ insights, period }: { insights: Insight[]; period: string }) {
+function InsightsPanel({ insights, period, pillLabel = 'CFO Insights' }: { insights: Insight[]; period: string; pillLabel?: string }) {
   if (!insights.length) return null;
-  const icon = { good: '✓', warn: '⊙', info: 'i' };
-  const color = { good: GREEN, warn: RED, info: BLUE };
+  const icon = { good: '▲', warn: '⚠', info: '●' };
+  const cls  = { good: 'good', warn: 'warn', info: 'neu' };
   return (
-    <div style={{ background: 'rgba(19,144,235,0.07)', border: '1px solid rgba(19,144,235,0.2)', borderRadius: 12, padding: '16px 20px', marginBottom: 20 }}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 12 }}>
-        <span style={{ background: 'var(--blue-soft)', color: 'var(--blue)', fontSize: 10, fontWeight: 700, letterSpacing: 1, padding: '2px 8px', borderRadius: 100, border: '1px solid rgba(19,144,235,0.3)' }}>INSIGHTS</span>
-        <span style={{ fontFamily: 'var(--font-head)', fontSize: 16, letterSpacing: 1 }}>WHAT TO DO NEXT · {period.toUpperCase()}</span>
-      </div>
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+    <div className="insights-box">
+      <span className="insights-pill">{pillLabel}</span>
+      <span className="insights-title">{period} · Key Signals</span>
+      <div className="insights-list">
         {insights.map((ins, i) => (
-          <div key={i} style={{ display: 'flex', gap: 10, alignItems: 'flex-start', fontSize: 13 }}>
-            <span style={{ width: 18, height: 18, borderRadius: '50%', background: color[ins.type] + '22', border: `1px solid ${color[ins.type]}55`, color: color[ins.type], display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 10, fontWeight: 700, flexShrink: 0, marginTop: 1 }}>{icon[ins.type]}</span>
-            <span style={{ color: 'rgba(255,255,255,0.85)', lineHeight: 1.5 }} dangerouslySetInnerHTML={{ __html: ins.text.replace(/([+-]?\d+\.?\d*[Kk%×]?)/g, '<strong>$1</strong>') }} />
+          <div key={i} className="insights-row">
+            <span className={`ii ${cls[ins.type]}`}>{icon[ins.type]}</span>
+            <span dangerouslySetInnerHTML={{ __html: ins.text.replace(/([+-]?\$?[\d,]+\.?\d*[Kk%×]?)/g, '<b>$1</b>') }} />
           </div>
         ))}
       </div>
@@ -202,7 +200,6 @@ export default function Dashboard() {
   const ytdNet  = pl.netIncome.slice(0, pidx + 1).reduce((a, b) => a + b, 0);
   const ytdCogs = pl.cogs.slice(0, pidx + 1).reduce((a, b) => a + b, 0);
   const ytdOpex = pl.opex.slice(0, pidx + 1).reduce((a, b) => a + b, 0);
-  const avgNet  = pl.netMargin.slice(0, pidx + 1).reduce((a, b) => a + b, 0) / (pidx + 1);
   const togglePL = (key: string) => setPlOpen(p => ({ ...p, [key]: !p[key] }));
 
   // Client aggregations
@@ -225,17 +222,6 @@ export default function Dashboard() {
 
   const maxProfit = Math.max(...clientProfits.map(c => Math.abs(c.profit)), 1);
 
-  // Heatmap rows
-  const heatmapRows = [
-    { label: 'Revenue', values: pl.revenue, format: 'dollar' as const },
-    { label: 'Gross Profit', values: pl.grossProfit, format: 'dollar' as const },
-    { label: 'Gross Margin', values: pl.grossMargin, format: 'pct' as const },
-    { label: 'Net Income', values: pl.netIncome, format: 'dollar' as const },
-    { label: 'Net Margin', values: pl.netMargin, format: 'pct' as const },
-    { label: 'COGS', values: pl.cogs, format: 'dollar' as const },
-    { label: 'OpEx', values: pl.opex, format: 'dollar' as const },
-  ];
-
   const revMom = prev >= 0 ? mom(pl.revenue[pidx], pl.revenue[prev]) : { cls: 'flat', str: '—' };
   const netMom = prev >= 0 ? mom(pl.netIncome[pidx], pl.netIncome[prev]) : { cls: 'flat', str: '—' };
   const mgPP   = prev >= 0 ? pp(pl.netMargin[pidx], pl.netMargin[prev]) : { cls: 'flat', str: '—' };
@@ -243,22 +229,18 @@ export default function Dashboard() {
   return (
     <ErrorBoundary>
     <>
-      {/* ── TOP BAR ──────────────────────────────────────────────────── */}
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '14px 36px', borderBottom: '1px solid var(--card-border)', gap: 16, flexWrap: 'wrap' }}>
+      {/* ── HEADER ───────────────────────────────────────────────────── */}
+      <div className="header">
         <div className="logo"><span>AGEN</span><span className="b">CFO</span><span className="x">×</span>SWELLWAVE MEDIA</div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 20, flexWrap: 'wrap' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-            <span style={{ fontSize: 11, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '0.7px' }}>Period</span>
-            <select value={pidx} onChange={e => setPeriod(Number(e.target.value))} style={{ fontFamily: 'var(--font-head)', fontSize: 14, letterSpacing: '0.5px' }}>
+        <div className="header-right">
+          <div className="last-updated">Data last updated: {lastRefresh.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}</div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6, justifyContent: 'flex-end', marginTop: 4 }}>
+            <select value={pidx} onChange={e => setPeriod(Number(e.target.value))} style={{ background: 'var(--blue-soft)', color: 'var(--blue)', border: '1px solid rgba(19,144,235,0.35)', borderRadius: 100, fontFamily: 'inherit', fontSize: 10, fontWeight: 500, letterSpacing: '0.5px', padding: '2px 8px', cursor: 'pointer', textTransform: 'uppercase' }}>
               {labels.map((l, i) => <option key={l} value={i}>{l}</option>)}
             </select>
+            <span className="period-badge">{pl.months[pidx]?.status ?? 'Actuals'}</span>
+            <button onClick={load} title="Refresh" style={{ background: 'none', border: 'none', color: 'var(--muted)', cursor: 'pointer', fontSize: 14, padding: '0 2px', lineHeight: 1 }}>↻</button>
           </div>
-          <div style={{ fontSize: 11, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '0.7px' }}>
-            {pl.months[pidx]?.status ?? 'Actuals'} · Live
-          </div>
-          <button onClick={load} style={{ display: 'flex', alignItems: 'center', gap: 6, background: 'var(--card-strong)', border: '1px solid var(--card-border)', borderRadius: 8, color: 'var(--text)', cursor: 'pointer', fontSize: 12, padding: '6px 14px', fontFamily: 'var(--font-body)' }}>
-            ↻ Refresh
-          </button>
         </div>
       </div>
 
@@ -300,118 +282,104 @@ export default function Dashboard() {
           </div>
         </div>
 
-        <div className="gap">
+        <div className="grid-2 gap">
           <div className="panel">
-            <h2>Revenue & Operating Profit by Month</h2>
-            <div className="sub">Same axis — visual gap shows how much profit lags revenue</div>
+            <h2>Revenue vs Net Income</h2>
+            <div className="sub">Bars = revenue · line = net income · {labels[0]} – {labels[pidx]}</div>
             <div className="chart-wrap tall">
-              <LabeledLineChart
-                labels={labels}
-                datasets={[
-                  { label: 'Revenue', data: pl.revenue, color: BLUE, fill: false },
-                  { label: 'Net Income', data: pl.netIncome, color: GREEN, fill: true },
-                ]}
-                statuses={pl.months.map(m => m.status)}
-              />
+              <TrendChart labels={labels} revenue={pl.revenue} cogs={pl.cogs} netIncome={pl.netIncome} />
+            </div>
+          </div>
+          <div className="panel">
+            <h2>Monthly Margins</h2>
+            <div className="sub">Gross margin vs net margin trend</div>
+            <div className="chart-wrap tall">
+              <DualMarginChart labels={labels} gross={pl.grossMargin} net={pl.netMargin} />
             </div>
           </div>
         </div>
 
         <div className="panel gap">
-          <h2>Income Statement</h2>
-          <div className="sub">Monthly P&L · click ▶ to expand line items</div>
+          <h2>P&amp;L by Month</h2>
+          <div className="sub">Revenue, COGS, gross profit, OpEx and net income · click ▶ to expand line items</div>
           <div className="tbl-scroll-y">
             <table>
               <thead>
                 <tr>
                   <th style={{minWidth:200}}>Line Item</th>
                   {labels.map(l => <th key={l} className="num">{l}</th>)}
+                  <th className="num" style={{color:'var(--blue)'}}>YTD</th>
                 </tr>
               </thead>
               <tbody>
                 <tr>
                   <td><button className={`plbtn${plOpen.rev ? ' open' : ''}`} onClick={() => togglePL('rev')}>▶</button><strong>Revenue</strong></td>
                   {pl.revenue.map((v,i) => <td key={i} className="num"><strong>{fmtFull(v)}</strong></td>)}
+                  <td className="num" style={{color:'var(--blue)'}}><strong>{fmtFull(ytdRev)}</strong></td>
                 </tr>
                 {Object.entries(clientMonthly).map(([lbl, vals]) => (
                   <tr key={lbl} style={{display: plOpen.rev ? '' : 'none'}}>
-                    <td style={{paddingLeft:28, color:'var(--muted)', fontSize:12}}>{lbl}</td>
+                    <td style={{paddingLeft:24, color:'var(--muted)', fontSize:12}}>↳ {lbl}</td>
                     {vals.slice(0,N).map((v,j) => <td key={j} className="num" style={{fontSize:12}}>{v > 0 ? fmtFull(v) : <span className="cell-zero">—</span>}</td>)}
+                    <td className="num" style={{fontSize:12}}>{fmtFull(vals.slice(0,pidx+1).reduce((a,b)=>a+b,0))}</td>
                   </tr>
                 ))}
                 <tr>
-                  <td><button className={`plbtn${plOpen.cogs ? ' open' : ''}`} onClick={() => togglePL('cogs')}>▶</button>Cost of Goods Sold</td>
-                  {pl.cogs.map((v,i) => <td key={i} className="num" style={{color:'var(--red)'}}>{fmtFull(v)}</td>)}
+                  <td><button className={`plbtn${plOpen.cogs ? ' open' : ''}`} onClick={() => togglePL('cogs')}>▶</button>Cost of Sales (COGS)</td>
+                  {pl.cogs.map((v,i) => <td key={i} className="num" style={{color:'var(--red)'}}>-{fmtFull(v)}</td>)}
+                  <td className="num" style={{color:'var(--red)'}}>-{fmtFull(ytdCogs)}</td>
                 </tr>
                 {cogsCategories.map(c => (
                   <tr key={c.name} style={{display: plOpen.cogs ? '' : 'none'}}>
-                    <td style={{paddingLeft:28, color:'var(--muted)', fontSize:12}}>{c.name.replace('- Service Delivery','').trim()}</td>
-                    {c.values.slice(0,N).map((v,j) => <td key={j} className="num" style={{fontSize:12, color:'var(--red)'}}>{v > 0 ? fmtFull(v) : <span className="cell-zero">—</span>}</td>)}
+                    <td style={{paddingLeft:24, color:'var(--muted)', fontSize:12}}>↳ {c.name.replace('- Service Delivery','').trim()}</td>
+                    {c.values.slice(0,N).map((v,j) => <td key={j} className="num" style={{fontSize:12, color:'rgba(255,255,255,0.45)'}}>{v > 0 ? '-'+fmtFull(v) : <span className="cell-zero">—</span>}</td>)}
+                    <td className="num" style={{fontSize:12, color:'rgba(255,255,255,0.45)'}}>-{fmtFull(c.values.slice(0,pidx+1).reduce((a,b)=>a+b,0))}</td>
                   </tr>
                 ))}
-                <tr className="subtotal">
-                  <td><strong>Gross Profit</strong></td>
+                <tr style={{background:'rgba(34,197,94,0.04)'}}>
+                  <td style={{paddingLeft:20}}><strong>Gross Profit</strong></td>
                   {pl.grossProfit.map((v,i) => <td key={i} className="num"><strong style={{color:'var(--green)'}}>{fmtFull(v)}</strong></td>)}
-                </tr>
-                <tr>
-                  <td style={{paddingLeft:16, color:'var(--muted)', fontSize:12}}>Gross Margin %</td>
-                  {pl.grossMargin.map((v,i) => <td key={i} className="num" style={{fontSize:12, color:'var(--blue)'}}>{pct(v)}</td>)}
+                  <td className="num"><strong style={{color:'var(--green)'}}>{fmtFull(ytdRev - ytdCogs)}</strong></td>
                 </tr>
                 <tr>
                   <td><button className={`plbtn${plOpen.opex ? ' open' : ''}`} onClick={() => togglePL('opex')}>▶</button>Operating Expenses</td>
-                  {pl.opex.map((v,i) => <td key={i} className="num" style={{color:'var(--amber)'}}>{fmtFull(v)}</td>)}
+                  {pl.opex.map((v,i) => <td key={i} className="num" style={{color:'var(--red)'}}>-{fmtFull(v)}</td>)}
+                  <td className="num" style={{color:'var(--red)'}}>-{fmtFull(ytdOpex)}</td>
                 </tr>
                 {expenseCategories.filter(e => e.values.slice(0,N).some(v => v > 0)).map(e => (
                   <tr key={e.name} style={{display: plOpen.opex ? '' : 'none'}}>
-                    <td style={{paddingLeft:28, color:'var(--muted)', fontSize:12}}>{e.name.replace(' Expenses','').replace('and other ','')}</td>
-                    {e.values.slice(0,N).map((v,j) => <td key={j} className="num" style={{fontSize:12, color:'var(--amber)'}}>{v > 0 ? fmtFull(v) : <span className="cell-zero">—</span>}</td>)}
+                    <td style={{paddingLeft:24, color:'var(--muted)', fontSize:12}}>↳ {e.name.replace(' Expenses','').replace('and other ','')}</td>
+                    {e.values.slice(0,N).map((v,j) => <td key={j} className="num" style={{fontSize:12, color:'rgba(255,255,255,0.45)'}}>{v > 0 ? '-'+fmtFull(v) : <span className="cell-zero">—</span>}</td>)}
+                    <td className="num" style={{fontSize:12, color:'rgba(255,255,255,0.45)'}}>-{fmtFull(e.values.slice(0,pidx+1).reduce((a,b)=>a+b,0))}</td>
                   </tr>
                 ))}
                 <tr className="grand-total">
                   <td><strong>Net Income</strong></td>
                   {pl.netIncome.map((v,i) => <td key={i} className="num"><strong style={{color: v >= 0 ? 'var(--green)' : 'var(--red)'}}>{fmtFull(v)}</strong></td>)}
+                  <td className="num"><strong style={{color: ytdNet >= 0 ? 'var(--green)' : 'var(--red)'}}>{fmtFull(ytdNet)}</strong></td>
                 </tr>
                 <tr>
-                  <td style={{paddingLeft:16, color:'var(--muted)', fontSize:12}}>Net Margin %</td>
-                  {pl.netMargin.map((v,i) => <td key={i} className="num" style={{fontSize:12, color:'var(--green)'}}>{pct(v)}</td>)}
+                  <td style={{color:'var(--muted)', paddingLeft:20, fontSize:11}}>Gross Margin</td>
+                  {pl.grossMargin.map((v,i) => <td key={i} className="num" style={{fontSize:11, color:'var(--muted)'}}>{pct(v)}</td>)}
+                  <td className="num" style={{fontSize:11, color:'var(--muted)'}}>{pct((ytdRev - ytdCogs) / ytdRev * 100)} avg</td>
+                </tr>
+                <tr>
+                  <td style={{color:'var(--muted)', paddingLeft:20, fontSize:11}}>Net Margin</td>
+                  {pl.netMargin.map((v,i) => <td key={i} className="num" style={{fontSize:11, color:'var(--muted)'}}>{pct(v)}</td>)}
+                  <td className="num" style={{fontSize:11, color:'var(--muted)'}}>{pct(ytdNet / ytdRev * 100)} avg</td>
                 </tr>
               </tbody>
             </table>
           </div>
         </div>
 
-        <div className="grid-2 gap">
-          <div className="panel">
-            <h2>Gross &amp; Net Margin</h2>
-            <div className="sub">Monthly trend · both margins overlaid</div>
-            <div className="chart-wrap">
-              <DualMarginChart labels={labels} gross={pl.grossMargin} net={pl.netMargin} />
-            </div>
-          </div>
-          <div className="panel">
-            <h2>YTD Totals</h2>
-            <div className="sub">{labels[0]} – {labels[pidx]} cumulative</div>
-            <div className="stat-row" style={{ flexDirection: 'column', gap: 12, marginTop: 6 }}>
-              <div className="stat-item"><div className="sl">YTD Revenue</div><div className="sv">{fmt(ytdRev)}</div></div>
-              <div className="stat-item"><div className="sl">YTD Net Income</div><div className="sv" style={{ color: 'var(--green)' }}>{fmt(ytdNet)}</div></div>
-              <div className="stat-item"><div className="sl">Avg Net Margin</div><div className="sv">{pct(avgNet)}</div></div>
-              <div className="stat-item"><div className="sl">YTD COGS</div><div className="sv" style={{ color: 'var(--red)' }}>{fmt(ytdCogs)}</div></div>
-            </div>
-          </div>
-        </div>
-
-        <div className="panel gap">
-          <h2>All Metrics by Month</h2>
-          <div className="sub">Each cell coloured relative to its own min/max range — green = best, red = worst</div>
-          <HeatmapTable rows={heatmapRows} labels={labels} />
-        </div>
       </div>
 
       {/* ══════════════════════════════════════════════════════════════
           REVENUE
       ══════════════════════════════════════════════════════════════ */}
       <div className={`page${tab === 'revenue' ? ' active' : ''}`}>
-        <InsightsPanel insights={insights.filter(i => i.type !== 'warn' || i.text.toLowerCase().includes('revenue'))} period={currentPeriod} />
+        <InsightsPanel insights={insights.filter(i => i.type !== 'warn' || i.text.toLowerCase().includes('revenue'))} period={currentPeriod} pillLabel="Revenue Insights" />
 
         <div className="metrics-strip">
           <div className="metric-card"><div className="ml">YTD Revenue</div><div className="mv">{fmt(ytdRev)}</div><div className="ms">{labels[0]} – {labels[pidx]}</div></div>
@@ -526,7 +494,7 @@ export default function Dashboard() {
           EXPENSES
       ══════════════════════════════════════════════════════════════ */}
       <div className={`page${tab === 'expenses' ? ' active' : ''}`}>
-        <InsightsPanel insights={insights.filter(i => i.text.toLowerCase().includes('cogs') || i.text.toLowerCase().includes('opex') || i.text.toLowerCase().includes('margin') || i.text.toLowerCase().includes('cost'))} period={currentPeriod} />
+        <InsightsPanel insights={insights.filter(i => i.text.toLowerCase().includes('cogs') || i.text.toLowerCase().includes('opex') || i.text.toLowerCase().includes('margin') || i.text.toLowerCase().includes('cost'))} period={currentPeriod} pillLabel="Expense Insights" />
 
         <div className="kpi-grid">
           <div className="kpi">
