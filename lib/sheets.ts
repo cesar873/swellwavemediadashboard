@@ -140,35 +140,39 @@ export async function fetchDashboardData(): Promise<DashboardData> {
 
   const pl: PLData = { months, revenue, cogs: cogsTotal, grossProfit, grossMargin, opex, netIncome, netMargin: netMarginPct };
 
-  // ── COGS categories ──────────────────────────────────────────────────────
-  const cogsLabels = ['Contractors - Service Delivery', 'Influencer Contract Payments', 'Subcontracted Services'];
-  const cogsCategories: COGSCategory[] = cogsLabels.map(name => ({
-    name,
-    values: rowValues(plGrid, name, N),
-  })).filter(c => c.values.some(v => v !== 0));
+  // ── Dynamically extract COGS + OpEx categories from the sheet ─────────────
+  // Walk every row between the section boundaries and grab anything with a label
+  // and non-zero data — that way we pick up whatever categories the sheet has,
+  // not just a hardcoded list.
+  const totalRevIdx  = findRow(plGrid, 'Total Revenue')?.idx ?? -1;
+  const totalCogsIdx = findRow(plGrid, 'TOTAL COST OF SALES')?.idx
+                    ?? findRow(plGrid, 'Total Cost of Sales')?.idx
+                    ?? findRow(plGrid, 'Total Cost of Goods Sold')?.idx
+                    ?? -1;
+  const totalOpexIdx = findRow(plGrid, 'TOTAL OPERATING EXPENSES')?.idx
+                    ?? findRow(plGrid, 'Total Operating Expenses')?.idx
+                    ?? -1;
 
-  // ── OpEx categories ──────────────────────────────────────────────────────
-  const opexLabels = [
-    'Referral Partners',
-    'Meals & Entertainment',
-    'Travel - Lodging',
-    'Travel - Flights',
-    'Travel & Auto Expenses',
-    'Legal and Other Professional Fees',
-    'Software - Agency Tools',
-    'Software - AI Tools',
-    'Software - Other',
-    'Office Supplies',
-    'Tax Payments',
-    'Financial Services',
-    'Bank Charges and other fees',
-    'Uncategorized Expense',
-    'Accounting Services',
-  ];
-  const expenseCategories: ExpenseCategory[] = opexLabels.map(name => ({
-    name,
-    values: rowValues(plGrid, name, N),
-  })).filter(c => c.values.some(v => v !== 0));
+  const SKIP_LABEL = /^(total\b|cost of (sales|goods)|operating expenses?|gross profit|net income|income summary|gross margin|net margin|status)/i;
+
+  function extractDetailRows(startIdx: number, endIdx: number): { name: string; values: number[] }[] {
+    if (startIdx < 0 || endIdx <= startIdx) return [];
+    const out: { name: string; values: number[] }[] = [];
+    for (let i = startIdx + 1; i < endIdx; i++) {
+      const row = plGrid[i] || [];
+      const name = parseStr(row[0]);
+      if (!name) continue;
+      if (SKIP_LABEL.test(name)) continue;
+      const values = numericValues(row, N);
+      if (values.some(v => v !== 0)) {
+        out.push({ name, values });
+      }
+    }
+    return out;
+  }
+
+  const cogsCategories: COGSCategory[]     = extractDetailRows(totalRevIdx,  totalCogsIdx);
+  const expenseCategories: ExpenseCategory[] = extractDetailRows(totalCogsIdx, totalOpexIdx);
 
   // ── Clients (revenue by month) ──────────────────────────────────────────
   // Find the header row: must contain Client + Status + Service + Start Date + at least one month col
