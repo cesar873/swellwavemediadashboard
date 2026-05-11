@@ -22,7 +22,7 @@ class ErrorBoundary extends Component<{ children: ReactNode }, { error: string |
 }
 import type { DashboardData } from '@/lib/types';
 import {
-  TrendChart, MarginChart, StackedBarChart,
+  DualMarginChart, StackedBarChart,
   DonutChart, HorizontalBarChart, LabeledLineChart,
   BLUE, GREEN, RED, AMBER, PURPLE, YELLOW,
   fmt, fmtFull,
@@ -148,7 +148,8 @@ function HeatmapTable({ rows, labels }: { rows: { label: string; values: number[
 export default function Dashboard() {
   const [data, setData]       = useState<DashboardData | null>(null);
   const [error, setError]     = useState<string | null>(null);
-  const [tab, setTab]         = useState('executive');
+  const [tab, setTab]         = useState('financials');
+  const [plOpen, setPlOpen]   = useState<Record<string,boolean>>({});
   const [lastRefresh, setLR]  = useState(new Date());
   const [periodIdx, setPeriod] = useState<number>(-1); // -1 = latest
 
@@ -202,6 +203,7 @@ export default function Dashboard() {
   const ytdCogs = pl.cogs.slice(0, pidx + 1).reduce((a, b) => a + b, 0);
   const ytdOpex = pl.opex.slice(0, pidx + 1).reduce((a, b) => a + b, 0);
   const avgNet  = pl.netMargin.slice(0, pidx + 1).reduce((a, b) => a + b, 0) / (pidx + 1);
+  const togglePL = (key: string) => setPlOpen(p => ({ ...p, [key]: !p[key] }));
 
   // Client aggregations
   const clientMonthly = clients.reduce<Record<string, number[]>>((acc, c) => {
@@ -262,15 +264,15 @@ export default function Dashboard() {
 
       {/* ── NAV ──────────────────────────────────────────────────────── */}
       <nav>
-        {(['executive', 'revenue', 'expenses', 'clients', 'people'] as const).map(t => (
+        {(['financials', 'revenue', 'expenses', 'clients', 'people'] as const).map(t => (
           <button key={t} className={`tab-btn${tab === t ? ' active' : ''}`} onClick={() => setTab(t)}>{t}</button>
         ))}
       </nav>
 
       {/* ══════════════════════════════════════════════════════════════
-          EXECUTIVE
+          FINANCIALS
       ══════════════════════════════════════════════════════════════ */}
-      <div className={`page${tab === 'executive' ? ' active' : ''}`}>
+      <div className={`page${tab === 'financials' ? ' active' : ''}`}>
         <InsightsPanel insights={insights} period={currentPeriod} />
 
         <div className="kpi-grid">
@@ -315,19 +317,75 @@ export default function Dashboard() {
           </div>
         </div>
 
-        <div className="grid-3 gap">
-          <div className="panel">
-            <h2>Gross Margin</h2>
-            <div className="sub">Monthly trend</div>
-            <div className="chart-wrap short">
-              <MarginChart labels={labels} values={pl.grossMargin} color={BLUE} min={30} max={70} />
-            </div>
+        <div className="panel gap">
+          <h2>Income Statement</h2>
+          <div className="sub">Monthly P&L · click ▶ to expand line items</div>
+          <div className="tbl-scroll-y">
+            <table>
+              <thead>
+                <tr>
+                  <th style={{minWidth:200}}>Line Item</th>
+                  {labels.map(l => <th key={l} className="num">{l}</th>)}
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td><button className={`plbtn${plOpen.rev ? ' open' : ''}`} onClick={() => togglePL('rev')}>▶</button><strong>Revenue</strong></td>
+                  {pl.revenue.map((v,i) => <td key={i} className="num"><strong>{fmtFull(v)}</strong></td>)}
+                </tr>
+                {Object.entries(clientMonthly).map(([lbl, vals]) => (
+                  <tr key={lbl} style={{display: plOpen.rev ? '' : 'none'}}>
+                    <td style={{paddingLeft:28, color:'var(--muted)', fontSize:12}}>{lbl}</td>
+                    {vals.slice(0,N).map((v,j) => <td key={j} className="num" style={{fontSize:12}}>{v > 0 ? fmtFull(v) : <span className="cell-zero">—</span>}</td>)}
+                  </tr>
+                ))}
+                <tr>
+                  <td><button className={`plbtn${plOpen.cogs ? ' open' : ''}`} onClick={() => togglePL('cogs')}>▶</button>Cost of Goods Sold</td>
+                  {pl.cogs.map((v,i) => <td key={i} className="num" style={{color:'var(--red)'}}>{fmtFull(v)}</td>)}
+                </tr>
+                {cogsCategories.map(c => (
+                  <tr key={c.name} style={{display: plOpen.cogs ? '' : 'none'}}>
+                    <td style={{paddingLeft:28, color:'var(--muted)', fontSize:12}}>{c.name.replace('- Service Delivery','').trim()}</td>
+                    {c.values.slice(0,N).map((v,j) => <td key={j} className="num" style={{fontSize:12, color:'var(--red)'}}>{v > 0 ? fmtFull(v) : <span className="cell-zero">—</span>}</td>)}
+                  </tr>
+                ))}
+                <tr className="subtotal">
+                  <td><strong>Gross Profit</strong></td>
+                  {pl.grossProfit.map((v,i) => <td key={i} className="num"><strong style={{color:'var(--green)'}}>{fmtFull(v)}</strong></td>)}
+                </tr>
+                <tr>
+                  <td style={{paddingLeft:16, color:'var(--muted)', fontSize:12}}>Gross Margin %</td>
+                  {pl.grossMargin.map((v,i) => <td key={i} className="num" style={{fontSize:12, color:'var(--blue)'}}>{pct(v)}</td>)}
+                </tr>
+                <tr>
+                  <td><button className={`plbtn${plOpen.opex ? ' open' : ''}`} onClick={() => togglePL('opex')}>▶</button>Operating Expenses</td>
+                  {pl.opex.map((v,i) => <td key={i} className="num" style={{color:'var(--amber)'}}>{fmtFull(v)}</td>)}
+                </tr>
+                {expenseCategories.filter(e => e.values.slice(0,N).some(v => v > 0)).map(e => (
+                  <tr key={e.name} style={{display: plOpen.opex ? '' : 'none'}}>
+                    <td style={{paddingLeft:28, color:'var(--muted)', fontSize:12}}>{e.name.replace(' Expenses','').replace('and other ','')}</td>
+                    {e.values.slice(0,N).map((v,j) => <td key={j} className="num" style={{fontSize:12, color:'var(--amber)'}}>{v > 0 ? fmtFull(v) : <span className="cell-zero">—</span>}</td>)}
+                  </tr>
+                ))}
+                <tr className="grand-total">
+                  <td><strong>Net Income</strong></td>
+                  {pl.netIncome.map((v,i) => <td key={i} className="num"><strong style={{color: v >= 0 ? 'var(--green)' : 'var(--red)'}}>{fmtFull(v)}</strong></td>)}
+                </tr>
+                <tr>
+                  <td style={{paddingLeft:16, color:'var(--muted)', fontSize:12}}>Net Margin %</td>
+                  {pl.netMargin.map((v,i) => <td key={i} className="num" style={{fontSize:12, color:'var(--green)'}}>{pct(v)}</td>)}
+                </tr>
+              </tbody>
+            </table>
           </div>
+        </div>
+
+        <div className="grid-2 gap">
           <div className="panel">
-            <h2>Net Margin</h2>
-            <div className="sub">Monthly trend</div>
-            <div className="chart-wrap short">
-              <MarginChart labels={labels} values={pl.netMargin} color={GREEN} min={0} max={50} />
+            <h2>Gross &amp; Net Margin</h2>
+            <div className="sub">Monthly trend · both margins overlaid</div>
+            <div className="chart-wrap">
+              <DualMarginChart labels={labels} gross={pl.grossMargin} net={pl.netMargin} />
             </div>
           </div>
           <div className="panel">
@@ -354,6 +412,13 @@ export default function Dashboard() {
       ══════════════════════════════════════════════════════════════ */}
       <div className={`page${tab === 'revenue' ? ' active' : ''}`}>
         <InsightsPanel insights={insights.filter(i => i.type !== 'warn' || i.text.toLowerCase().includes('revenue'))} period={currentPeriod} />
+
+        <div className="metrics-strip">
+          <div className="metric-card"><div className="ml">YTD Revenue</div><div className="mv">{fmt(ytdRev)}</div><div className="ms">{labels[0]} – {labels[pidx]}</div></div>
+          <div className="metric-card"><div className="ml">Avg Monthly</div><div className="mv">{fmt(ytdRev / (pidx + 1))}</div><div className="ms">Per month YTD</div></div>
+          <div className="metric-card"><div className="ml">Best Month</div><div className="mv">{fmt(Math.max(...pl.revenue))}</div><div className="ms">{labels[pl.revenue.indexOf(Math.max(...pl.revenue))]}</div></div>
+          <div className="metric-card"><div className="ml">MoM Growth</div><div className="mv" style={{color: revMom.cls === 'up' ? 'var(--green)' : 'var(--red)'}}>{revMom.str}</div><div className="ms">{labels[prev] ?? '—'} → {currentPeriod}</div></div>
+        </div>
 
         <div className="kpi-grid">
           <div className="kpi">
@@ -404,32 +469,32 @@ export default function Dashboard() {
 
         <div className="grid-21">
           <div className="panel gap">
-            <h2>Client Revenue by Month</h2>
-            <div className="sub">All service lines</div>
-            <div className="tbl-scroll">
-              <table>
+            <h2>Revenue by Service Line · MoM</h2>
+            <div className="sub">Frozen first column · horizontally scrollable</div>
+            <div className="mom-wrap">
+              <table className="mom-tbl">
                 <thead>
                   <tr>
-                    <th>Client</th><th>Service</th><th>Pod</th>
-                    {labels.map(l => <th key={l} className="num">{l}</th>)}
+                    <th className="col-frozen" style={{textAlign:'left', minWidth:220}}>Client · Service</th>
+                    {labels.map(l => <th key={l} style={{minWidth:110}}>{l}</th>)}
                   </tr>
                 </thead>
                 <tbody>
                   {clients.filter(c => c.client).map((c, i) => (
                     <tr key={i}>
-                      <td><strong>{c.client}</strong></td>
-                      <td>{c.service || '—'}</td>
-                      <td>{c.pod || '—'}</td>
+                      <td className="col-frozen"><strong>{c.client}</strong>{c.service ? <span style={{color:'var(--muted)', fontWeight:400}}> · {c.service}</span> : null}</td>
                       {c.monthlyRevenue.slice(0, N).map((v, j) => (
-                        <td key={j} className="num" style={{ color: v === 0 ? 'var(--muted)' : undefined }}>{v === 0 ? '—' : fmtFull(v)}</td>
+                        <td key={j} className="num">{v === 0 ? <span className="cell-zero">—</span> : fmtFull(v)}</td>
                       ))}
                     </tr>
                   ))}
-                  <tr className="tr-grand">
-                    <td colSpan={3}><strong>Total</strong></td>
+                </tbody>
+                <tfoot>
+                  <tr>
+                    <td className="col-frozen"><strong>Total</strong></td>
                     {pl.revenue.map((v, i) => <td key={i} className="num"><strong>{fmtFull(v)}</strong></td>)}
                   </tr>
-                </tbody>
+                </tfoot>
               </table>
             </div>
           </div>
@@ -461,6 +526,7 @@ export default function Dashboard() {
           EXPENSES
       ══════════════════════════════════════════════════════════════ */}
       <div className={`page${tab === 'expenses' ? ' active' : ''}`}>
+        <InsightsPanel insights={insights.filter(i => i.text.toLowerCase().includes('cogs') || i.text.toLowerCase().includes('opex') || i.text.toLowerCase().includes('margin') || i.text.toLowerCase().includes('cost'))} period={currentPeriod} />
 
         <div className="kpi-grid">
           <div className="kpi">
@@ -485,32 +551,91 @@ export default function Dashboard() {
           </div>
         </div>
 
-        <div className="grid-2 gap">
+        <div className="grid-21 gap">
           <div className="panel">
-            <h2>Cost of Sales</h2>
-            <div className="sub">Influencer contracts dominant</div>
+            <h2>Total Spend by Month</h2>
+            <div className="sub">COGS + OpEx stacked by category</div>
             <div className="chart-wrap tall">
-              <StackedBarChart labels={labels} datasets={cogsChartData} statuses={pl.months.map(m => m.status)} />
+              <StackedBarChart labels={labels} datasets={[...cogsChartData, ...opexChartData]} statuses={pl.months.map(m => m.status)} />
             </div>
-            <div className="legend">{cogsChartData.map(d => <div key={d.label} className="legend-item"><div className="legend-dot" style={{ background: d.color }} />{d.label}</div>)}</div>
+            <div className="legend">{[...cogsChartData, ...opexChartData].map(d => <div key={d.label} className="legend-item"><div className="legend-dot" style={{ background: d.color }} />{d.label}</div>)}</div>
           </div>
           <div className="panel">
-            <h2>Operating Expenses</h2>
-            <div className="sub">Stacked by category</div>
-            <div className="chart-wrap tall">
-              <StackedBarChart labels={labels} datasets={opexChartData} statuses={pl.months.map(m => m.status)} />
-            </div>
-            <div className="legend">{opexChartData.map(d => <div key={d.label} className="legend-item"><div className="legend-dot" style={{ background: d.color }} />{d.label}</div>)}</div>
+            <h2>Expense Mix · {currentPeriod}</h2>
+            <div className="sub">COGS vs OpEx breakdown</div>
+            {(() => {
+              const cogsTotal = pl.cogs[pidx] ?? 0;
+              const opexTotal = pl.opex[pidx] ?? 0;
+              const grandTotal = cogsTotal + opexTotal;
+              return (
+                <>
+                  <DonutChart
+                    labels={['COGS', 'OpEx']}
+                    values={[cogsTotal, opexTotal]}
+                    centerLabel={fmt(grandTotal)}
+                    centerSub="Total Spend"
+                  />
+                  <div className="legend" style={{ marginTop: 14, flexDirection: 'column', gap: 8 }}>
+                    <div className="legend-item"><div className="legend-dot" style={{ background: RED }} />COGS — {fmtFull(cogsTotal)} ({grandTotal > 0 ? pct((cogsTotal / grandTotal) * 100) : '—'})</div>
+                    <div className="legend-item"><div className="legend-dot" style={{ background: AMBER }} />OpEx — {fmtFull(opexTotal)} ({grandTotal > 0 ? pct((opexTotal / grandTotal) * 100) : '—'})</div>
+                  </div>
+                  <div style={{ marginTop: 16 }}>
+                    <div style={{ fontSize: 11, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '0.7px', marginBottom: 8 }}>COGS Breakdown</div>
+                    {cogsCategories.map(c => { const v = c.values[pidx] ?? 0; return v > 0 ? (
+                      <div key={c.name} style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, padding: '4px 0', borderBottom: '1px solid var(--card-border)' }}>
+                        <span style={{ color: 'var(--muted)' }}>{c.name.replace('- Service Delivery','').trim()}</span>
+                        <span>{fmtFull(v)}</span>
+                      </div>
+                    ) : null; })}
+                    <div style={{ fontSize: 11, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '0.7px', marginBottom: 8, marginTop: 12 }}>OpEx Breakdown</div>
+                    {expenseCategories.filter(e => (e.values[pidx] ?? 0) > 0).map(e => (
+                      <div key={e.name} style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, padding: '4px 0', borderBottom: '1px solid var(--card-border)' }}>
+                        <span style={{ color: 'var(--muted)' }}>{e.name.replace(' Expenses','').replace('and other ','')}</span>
+                        <span>{fmtFull(e.values[pidx] ?? 0)}</span>
+                      </div>
+                    ))}
+                  </div>
+                </>
+              );
+            })()}
           </div>
         </div>
 
         <div className="panel gap">
-          <h2>Operating Expense Detail</h2>
-          <div className="sub">Line-by-line · each row coloured relative to its own range</div>
-          <HeatmapTable
-            rows={expenseCategories.filter(e => e.values.slice(0, N).some(v => v > 0)).map(e => ({ label: e.name, values: e.values.slice(0, N), format: 'dollar' as const }))}
-            labels={labels}
-          />
+          <h2>Expense Detail · MoM</h2>
+          <div className="sub">COGS + OpEx line items · frozen first column</div>
+          <div className="mom-wrap">
+            <table className="mom-tbl">
+              <thead>
+                <tr>
+                  <th className="col-frozen" style={{textAlign:'left', minWidth:220}}>Category</th>
+                  {labels.map(l => <th key={l} style={{minWidth:110}}>{l}</th>)}
+                </tr>
+              </thead>
+              <tbody>
+                <tr><td className="col-frozen" style={{color:'var(--muted)', fontSize:11, textTransform:'uppercase', letterSpacing:'0.7px', paddingTop:10}}>Cost of Goods Sold</td>{Array(N).fill(null).map((_,i) => <td key={i} />)}</tr>
+                {cogsCategories.map(c => (
+                  <tr key={c.name}>
+                    <td className="col-frozen" style={{paddingLeft:12}}>{c.name.replace('- Service Delivery','').trim()}</td>
+                    {c.values.slice(0,N).map((v,j) => <td key={j} className="num" style={{color: v > 0 ? 'var(--red)' : undefined}}>{v > 0 ? fmtFull(v) : <span className="cell-zero">—</span>}</td>)}
+                  </tr>
+                ))}
+                <tr><td className="col-frozen" style={{color:'var(--muted)', fontSize:11, textTransform:'uppercase', letterSpacing:'0.7px', paddingTop:10}}>Operating Expenses</td>{Array(N).fill(null).map((_,i) => <td key={i} />)}</tr>
+                {expenseCategories.filter(e => e.values.slice(0,N).some(v => v > 0)).map(e => (
+                  <tr key={e.name}>
+                    <td className="col-frozen" style={{paddingLeft:12}}>{e.name.replace(' Expenses','').replace('and other ','')}</td>
+                    {e.values.slice(0,N).map((v,j) => <td key={j} className="num" style={{color: v > 0 ? 'var(--amber)' : undefined}}>{v > 0 ? fmtFull(v) : <span className="cell-zero">—</span>}</td>)}
+                  </tr>
+                ))}
+              </tbody>
+              <tfoot>
+                <tr>
+                  <td className="col-frozen"><strong>Total Spend</strong></td>
+                  {pl.cogs.map((v,i) => <td key={i} className="num"><strong>{fmtFull(v + (pl.opex[i] ?? 0))}</strong></td>)}
+                </tr>
+              </tfoot>
+            </table>
+          </div>
         </div>
       </div>
 

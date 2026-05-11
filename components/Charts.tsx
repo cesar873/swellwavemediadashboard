@@ -117,6 +117,39 @@ export function MarginChart({ labels, values, color, min, max }: {
   return <ChartCanvas config={config} />;
 }
 
+// ── Dual margin line chart (gross % + net %) ─────────────────────────────────
+export function DualMarginChart({ labels, gross, net }: {
+  labels: string[]; gross: number[]; net: number[];
+}) {
+  const config: ChartConfiguration = {
+    type: 'line',
+    data: {
+      labels,
+      datasets: [
+        { label: 'Gross Margin', data: gross, borderColor: BLUE, backgroundColor: 'rgba(19,144,235,0.08)', tension: 0.35, pointRadius: 4, borderWidth: 2.5, fill: false, pointBackgroundColor: BLUE },
+        { label: 'Net Margin',   data: net,   borderColor: GREEN, backgroundColor: 'rgba(34,197,94,0.08)',  tension: 0.35, pointRadius: 4, borderWidth: 2.5, fill: false, pointBackgroundColor: GREEN },
+      ],
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      plugins: {
+        legend: { position: 'top', labels: { boxWidth: 10, boxHeight: 10, padding: 14 } },
+        datalabels: {
+          display: true, align: 'top', offset: 4, font: { size: 10, weight: 700 as const },
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          color: (ctx: any) => ctx.datasetIndex === 0 ? BLUE : GREEN,
+          formatter: (v: number) => v.toFixed(1) + '%',
+        },
+      },
+      scales: {
+        x: { grid: { display: false } },
+        y: { ticks: { callback: v => v + '%' }, grid: { color: 'rgba(255,255,255,0.05)' } },
+      },
+    },
+  };
+  return <ChartCanvas config={config} />;
+}
+
 // ── Stacked bar (revenue by client) ──────────────────────────────────────────
 export function StackedBarChart({ labels, datasets, statuses }: {
   labels: string[];
