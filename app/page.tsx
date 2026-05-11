@@ -418,10 +418,10 @@ export default function Dashboard() {
           </div>
         </div>
 
-        <div className="gap">
+        <div className="grid-21 gap">
           <div className="panel">
-            <h2>Total Revenue by Month</h2>
-            <div className="sub">Stacked by service line · biggest at bottom</div>
+            <h2>Monthly Revenue Breakdown</h2>
+            <div className="sub">By service line — {labels[0]} – {labels[pidx]} actuals</div>
             <div className="chart-wrap tall">
               <StackedBarChart
                 labels={labels}
@@ -433,59 +433,72 @@ export default function Dashboard() {
               />
             </div>
           </div>
-        </div>
-
-        <div className="grid-21">
-          <div className="panel gap">
-            <h2>Revenue by Service Line · MoM</h2>
-            <div className="sub">Frozen first column · horizontally scrollable</div>
-            <div className="mom-wrap">
-              <table className="mom-tbl">
-                <thead>
-                  <tr>
-                    <th className="col-frozen" style={{textAlign:'left', minWidth:220}}>Client · Service</th>
-                    {labels.map(l => <th key={l} style={{minWidth:110}}>{l}</th>)}
-                  </tr>
-                </thead>
-                <tbody>
-                  {clients.filter(c => c.client).map((c, i) => (
-                    <tr key={i}>
-                      <td className="col-frozen"><strong>{c.client}</strong>{c.service ? <span style={{color:'var(--muted)', fontWeight:400}}> · {c.service}</span> : null}</td>
-                      {c.monthlyRevenue.slice(0, N).map((v, j) => (
-                        <td key={j} className="num">{v === 0 ? <span className="cell-zero">—</span> : fmtFull(v)}</td>
-                      ))}
-                    </tr>
-                  ))}
-                </tbody>
-                <tfoot>
-                  <tr>
-                    <td className="col-frozen"><strong>Total</strong></td>
-                    {pl.revenue.map((v, i) => <td key={i} className="num"><strong>{fmtFull(v)}</strong></td>)}
-                  </tr>
-                </tfoot>
-              </table>
-            </div>
-          </div>
-          <div className="panel">
-            <h2>Revenue Mix · {currentPeriod}</h2>
-            <div className="sub">By service line</div>
+          <div className="panel" style={{alignSelf:'start', display:'flex', flexDirection:'column', gap:20}}>
             {(() => {
               const lines = Object.entries(clientMonthly).map(([label, vals]) => ({ label, v: vals[pidx] ?? 0 })).filter(x => x.v > 0);
               const total = lines.reduce((a, x) => a + x.v, 0);
+              const colors = [BLUE, 'rgba(19,144,235,0.6)', GREEN, PURPLE, YELLOW, AMBER];
               return (
                 <>
-                  <DonutChart labels={lines.map(x => x.label)} values={lines.map(x => x.v)} centerLabel={fmt(total)} centerSub="Total" />
-                  <div className="legend" style={{ marginTop: 14, justifyContent: 'center' }}>
-                    {lines.map((x, i) => (
-                      <div key={x.label} className="legend-item">
-                        <div className="legend-dot" style={{ background: [BLUE, 'rgba(19,144,235,0.6)', GREEN, PURPLE, YELLOW, AMBER][i % 6] }} />
-                        {x.label.split(' · ')[0]} ({pct((x.v / total) * 100)})
+                  <div>
+                    <h2>Revenue Mix · {currentPeriod}</h2>
+                    <div className="sub">By service type</div>
+                    <DonutChart labels={lines.map(x => x.label)} values={lines.map(x => x.v)} centerLabel={fmt(total)} centerSub="Total" />
+                    <div className="legend" style={{ marginTop: 14, justifyContent: 'center' }}>
+                      {lines.map((x, i) => (
+                        <div key={x.label} className="legend-item">
+                          <div className="legend-dot" style={{ background: colors[i % 6] }} />
+                          {x.label.split(' · ')[0]} ({pct((x.v / total) * 100)})
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                  <div className="divider" />
+                  <div className="stat-row" style={{flexDirection:'column', gap:10, marginBottom:0}}>
+                    {lines.slice(0, 3).map((x, i) => (
+                      <div key={x.label} className="stat-item">
+                        <div className="sl">{x.label.split(' · ')[0]} ({currentPeriod})</div>
+                        <div className="sv" style={{color: colors[i % 6]}}>{fmtFull(x.v)}</div>
                       </div>
                     ))}
                   </div>
                 </>
               );
             })()}
+          </div>
+        </div>
+
+        <div className="panel gap">
+          <h2>Revenue by Service Line × Month</h2>
+          <div className="sub">Contracted fee per service line · scroll horizontally</div>
+          <div className="mom-wrap">
+            <table className="mom-tbl">
+              <thead>
+                <tr>
+                  <th className="col-frozen" style={{textAlign:'left', minWidth:220}}>Client · Service</th>
+                  {labels.map(l => <th key={l} style={{minWidth:110}}>{l}</th>)}
+                  <th style={{minWidth:110, color:'var(--blue)'}}>Total</th>
+                </tr>
+              </thead>
+              <tbody>
+                {clients.filter(c => c.client).map((c, i) => (
+                  <tr key={i}>
+                    <td className="col-frozen"><strong>{c.client}</strong>{c.service ? <span style={{color:'var(--muted)', fontWeight:400}}> · {c.service}</span> : null}</td>
+                    {c.monthlyRevenue.slice(0, N).map((v, j) => (
+                      <td key={j} className="num">{v === 0 ? <span className="cell-zero">—</span> : fmtFull(v)}</td>
+                    ))}
+                    <td className="num" style={{color:'var(--blue)'}}><strong>{fmtFull(c.monthlyRevenue.slice(0,pidx+1).reduce((a,b)=>a+b,0))}</strong></td>
+                  </tr>
+                ))}
+              </tbody>
+              <tfoot>
+                <tr>
+                  <td className="col-frozen"><strong>Total</strong></td>
+                  {pl.revenue.map((v, i) => <td key={i} className="num"><strong>{fmtFull(v)}</strong></td>)}
+                  <td className="num" style={{color:'var(--green)'}}><strong>{fmtFull(ytdRev)}</strong></td>
+                </tr>
+              </tfoot>
+            </table>
           </div>
         </div>
       </div>
@@ -526,80 +539,116 @@ export default function Dashboard() {
             <div className="chart-wrap tall">
               <StackedBarChart labels={labels} datasets={[...cogsChartData, ...opexChartData]} statuses={pl.months.map(m => m.status)} />
             </div>
-            <div className="legend">{[...cogsChartData, ...opexChartData].map(d => <div key={d.label} className="legend-item"><div className="legend-dot" style={{ background: d.color }} />{d.label}</div>)}</div>
+          </div>
+          <div className="panel" style={{alignSelf:'start'}}>
+            <h2>Expense Category · {currentPeriod}</h2>
+            <div className="sub">Breakdown by category and type</div>
+            <div className="tbl-scroll-y" style={{maxHeight:340,marginTop:8}}>
+              <table>
+                <thead>
+                  <tr>
+                    <th>Category</th>
+                    <th style={{width:64}}>Type</th>
+                    <th className="num">Amount</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {cogsCategories.map(c => {
+                    const v = c.values[pidx] ?? 0;
+                    return v > 0 ? (
+                      <tr key={c.name}>
+                        <td>{c.name.replace('- Service Delivery','').trim()}</td>
+                        <td><span className="pill info">COGS</span></td>
+                        <td className="num" style={{color:'var(--red)'}}>{fmtFull(v)}</td>
+                      </tr>
+                    ) : null;
+                  })}
+                  <tr className="subtotal">
+                    <td><strong>Total COGS</strong></td>
+                    <td>—</td>
+                    <td className="num"><strong>{fmtFull(pl.cogs[pidx] ?? 0)}</strong></td>
+                  </tr>
+                  {expenseCategories.filter(e => (e.values[pidx] ?? 0) > 0).map(e => (
+                    <tr key={e.name}>
+                      <td>{e.name.replace(' Expenses','').replace('and other ','')}</td>
+                      <td><span className="pill warn">OpEx</span></td>
+                      <td className="num" style={{color:'var(--red)'}}>{fmtFull(e.values[pidx] ?? 0)}</td>
+                    </tr>
+                  ))}
+                  <tr className="subtotal">
+                    <td><strong>Total OpEx</strong></td>
+                    <td>—</td>
+                    <td className="num"><strong>{fmtFull(pl.opex[pidx] ?? 0)}</strong></td>
+                  </tr>
+                  <tr className="grand-total">
+                    <td><strong>Total Expenses</strong></td>
+                    <td>—</td>
+                    <td className="num"><strong>{fmtFull((pl.cogs[pidx] ?? 0) + (pl.opex[pidx] ?? 0))}</strong></td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+
+        <div className="grid-2 gap">
+          <div className="panel">
+            <h2>Cost of Sales Breakdown</h2>
+            <div className="sub">COGS by category — {labels[0]} – {labels[pidx]}</div>
+            <div className="chart-wrap tall">
+              <StackedBarChart labels={labels} datasets={cogsChartData} statuses={pl.months.map(m => m.status)} />
+            </div>
+            <div className="legend">{cogsChartData.map(d => <div key={d.label} className="legend-item"><div className="legend-dot" style={{background:d.color}} />{d.label}</div>)}</div>
           </div>
           <div className="panel">
-            <h2>Expense Mix · {currentPeriod}</h2>
-            <div className="sub">COGS vs OpEx breakdown</div>
-            {(() => {
-              const cogsTotal = pl.cogs[pidx] ?? 0;
-              const opexTotal = pl.opex[pidx] ?? 0;
-              const grandTotal = cogsTotal + opexTotal;
-              return (
-                <>
-                  <DonutChart
-                    labels={['COGS', 'OpEx']}
-                    values={[cogsTotal, opexTotal]}
-                    centerLabel={fmt(grandTotal)}
-                    centerSub="Total Spend"
-                  />
-                  <div className="legend" style={{ marginTop: 14, flexDirection: 'column', gap: 8 }}>
-                    <div className="legend-item"><div className="legend-dot" style={{ background: RED }} />COGS — {fmtFull(cogsTotal)} ({grandTotal > 0 ? pct((cogsTotal / grandTotal) * 100) : '—'})</div>
-                    <div className="legend-item"><div className="legend-dot" style={{ background: AMBER }} />OpEx — {fmtFull(opexTotal)} ({grandTotal > 0 ? pct((opexTotal / grandTotal) * 100) : '—'})</div>
-                  </div>
-                  <div style={{ marginTop: 16 }}>
-                    <div style={{ fontSize: 11, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '0.7px', marginBottom: 8 }}>COGS Breakdown</div>
-                    {cogsCategories.map(c => { const v = c.values[pidx] ?? 0; return v > 0 ? (
-                      <div key={c.name} style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, padding: '4px 0', borderBottom: '1px solid var(--card-border)' }}>
-                        <span style={{ color: 'var(--muted)' }}>{c.name.replace('- Service Delivery','').trim()}</span>
-                        <span>{fmtFull(v)}</span>
-                      </div>
-                    ) : null; })}
-                    <div style={{ fontSize: 11, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '0.7px', marginBottom: 8, marginTop: 12 }}>OpEx Breakdown</div>
-                    {expenseCategories.filter(e => (e.values[pidx] ?? 0) > 0).map(e => (
-                      <div key={e.name} style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, padding: '4px 0', borderBottom: '1px solid var(--card-border)' }}>
-                        <span style={{ color: 'var(--muted)' }}>{e.name.replace(' Expenses','').replace('and other ','')}</span>
-                        <span>{fmtFull(e.values[pidx] ?? 0)}</span>
-                      </div>
-                    ))}
-                  </div>
-                </>
-              );
-            })()}
+            <h2>OpEx Breakdown</h2>
+            <div className="sub">Operating expenses — {labels[0]} – {labels[pidx]}</div>
+            <div className="chart-wrap tall">
+              <StackedBarChart labels={labels} datasets={opexChartData} statuses={pl.months.map(m => m.status)} />
+            </div>
+            <div className="legend">{opexChartData.map(d => <div key={d.label} className="legend-item"><div className="legend-dot" style={{background:d.color}} />{d.label}</div>)}</div>
           </div>
         </div>
 
         <div className="panel gap">
-          <h2>Expense Detail · MoM</h2>
-          <div className="sub">COGS + OpEx line items · frozen first column</div>
+          <h2>Spend by Category × Month</h2>
+          <div className="sub">All expense categories — YTD total locked right</div>
           <div className="mom-wrap">
             <table className="mom-tbl">
               <thead>
                 <tr>
-                  <th className="col-frozen" style={{textAlign:'left', minWidth:220}}>Category</th>
+                  <th className="col-frozen" style={{textAlign:'left', minWidth:200}}>Category</th>
+                  <th style={{minWidth:64}}>Type</th>
                   {labels.map(l => <th key={l} style={{minWidth:110}}>{l}</th>)}
+                  <th style={{minWidth:110, color:'var(--amber)'}}>YTD</th>
                 </tr>
               </thead>
               <tbody>
-                <tr><td className="col-frozen" style={{color:'var(--muted)', fontSize:11, textTransform:'uppercase', letterSpacing:'0.7px', paddingTop:10}}>Cost of Goods Sold</td>{Array(N).fill(null).map((_,i) => <td key={i} />)}</tr>
+                <tr><td className="col-frozen" style={{color:'var(--muted)', fontSize:11, textTransform:'uppercase', letterSpacing:'0.7px', paddingTop:10}}>Cost of Goods Sold</td><td />{Array(N).fill(null).map((_,i) => <td key={i} />)}<td /></tr>
                 {cogsCategories.map(c => (
                   <tr key={c.name}>
                     <td className="col-frozen" style={{paddingLeft:12}}>{c.name.replace('- Service Delivery','').trim()}</td>
+                    <td><span className="pill info">COGS</span></td>
                     {c.values.slice(0,N).map((v,j) => <td key={j} className="num" style={{color: v > 0 ? 'var(--red)' : undefined}}>{v > 0 ? fmtFull(v) : <span className="cell-zero">—</span>}</td>)}
+                    <td className="num" style={{color:'var(--amber)'}}><strong>{fmtFull(c.values.slice(0,pidx+1).reduce((a,b)=>a+b,0))}</strong></td>
                   </tr>
                 ))}
-                <tr><td className="col-frozen" style={{color:'var(--muted)', fontSize:11, textTransform:'uppercase', letterSpacing:'0.7px', paddingTop:10}}>Operating Expenses</td>{Array(N).fill(null).map((_,i) => <td key={i} />)}</tr>
+                <tr><td className="col-frozen" style={{color:'var(--muted)', fontSize:11, textTransform:'uppercase', letterSpacing:'0.7px', paddingTop:10}}>Operating Expenses</td><td />{Array(N).fill(null).map((_,i) => <td key={i} />)}<td /></tr>
                 {expenseCategories.filter(e => e.values.slice(0,N).some(v => v > 0)).map(e => (
                   <tr key={e.name}>
                     <td className="col-frozen" style={{paddingLeft:12}}>{e.name.replace(' Expenses','').replace('and other ','')}</td>
+                    <td><span className="pill warn">OpEx</span></td>
                     {e.values.slice(0,N).map((v,j) => <td key={j} className="num" style={{color: v > 0 ? 'var(--amber)' : undefined}}>{v > 0 ? fmtFull(v) : <span className="cell-zero">—</span>}</td>)}
+                    <td className="num" style={{color:'var(--amber)'}}><strong>{fmtFull(e.values.slice(0,pidx+1).reduce((a,b)=>a+b,0))}</strong></td>
                   </tr>
                 ))}
               </tbody>
               <tfoot>
                 <tr>
                   <td className="col-frozen"><strong>Total Spend</strong></td>
+                  <td />
                   {pl.cogs.map((v,i) => <td key={i} className="num"><strong>{fmtFull(v + (pl.opex[i] ?? 0))}</strong></td>)}
+                  <td className="num" style={{color:'var(--amber)'}}><strong>{fmtFull(ytdCogs + ytdOpex)}</strong></td>
                 </tr>
               </tfoot>
             </table>
@@ -611,8 +660,6 @@ export default function Dashboard() {
           CLIENTS
       ══════════════════════════════════════════════════════════════ */}
       <div className={`page${tab === 'clients' ? ' active' : ''}`}>
-        <InsightsPanel insights={insights.filter(i => i.text.toLowerCase().includes('client') || i.text.toLowerCase().includes('revenue') || i.text.toLowerCase().includes('concentration'))} period={currentPeriod} />
-
         <div className="kpi-grid">
           <div className="kpi green">
             <div className="label">Active Clients</div>
@@ -701,6 +748,23 @@ export default function Dashboard() {
                       </div>
                     ))}
                   </div>
+                  <div style={{marginTop:20, paddingTop:16, borderTop:'1px solid var(--card-border)'}}>
+                    <div style={{fontSize:11, color:'var(--muted)', textTransform:'uppercase', letterSpacing:'0.7px', marginBottom:10}}>Pipeline Sources (Tracked)</div>
+                    <div style={{display:'flex', flexDirection:'column', gap:6, fontSize:12}}>
+                      {Object.entries(sources).map(([s, n]) => (
+                        <div key={s} style={{display:'flex', justifyContent:'space-between'}}>
+                          <span>{s}</span>
+                          <span style={{color:'var(--blue)'}}>{n}</span>
+                        </div>
+                      ))}
+                      {['Ads'].filter(s => !sources[s]).map(s => (
+                        <div key={s} style={{display:'flex', justifyContent:'space-between'}}>
+                          <span>{s}</span>
+                          <span style={{color:'var(--muted)'}}>0 closed</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
                 </>
               );
             })()}
@@ -770,8 +834,8 @@ export default function Dashboard() {
             </div>
           </div>
           <div className="panel">
-            <h2>Hours by Service & Intensity</h2>
-            <div className="sub">Total capacity required</div>
+            <h2>Hours by Service Type</h2>
+            <div className="sub">Total hrs required at each intensity level</div>
             <div className="chart-wrap med">
               <HorizontalBarChart
                 labels={(serviceCapacity.length > 0 ? serviceCapacity : [
@@ -785,6 +849,33 @@ export default function Dashboard() {
                   { label: 'Client Success', data: (serviceCapacity.length > 0 ? serviceCapacity : [{ clientSuccess: 10 }, { clientSuccess: 15 }, { clientSuccess: 20 }, { clientSuccess: 4 }, { clientSuccess: 6 }, { clientSuccess: 20 }, { clientSuccess: 4 }, { clientSuccess: 6 }, { clientSuccess: 20 }]).map(s => s.clientSuccess), color: 'rgba(192,132,252,0.7)' },
                 ]}
               />
+            </div>
+            <div style={{marginTop:16, paddingTop:14, borderTop:'1px solid var(--card-border)'}}>
+              <div style={{fontSize:11, color:'var(--muted)', textTransform:'uppercase', letterSpacing:'0.7px', marginBottom:10}}>People Cost Allocation · {currentPeriod}</div>
+              <div className="tbl-scroll">
+                <table>
+                  <thead>
+                    <tr>
+                      <th>Client</th>
+                      <th>Service</th>
+                      <th className="num">People Cost</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {clientProfits.filter(c => c.peopleCost > 0).map((c, i) => (
+                      <tr key={i}>
+                        <td>{c.client}</td>
+                        <td>{c.service || '—'}</td>
+                        <td className="num">{fmtFull(c.peopleCost)}</td>
+                      </tr>
+                    ))}
+                    <tr className="tr-grand">
+                      <td colSpan={2}><strong>Total Allocated</strong></td>
+                      <td className="num"><strong>{fmtFull(clientProfits.reduce((a, c) => a + c.peopleCost, 0))}</strong></td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
             </div>
           </div>
         </div>
