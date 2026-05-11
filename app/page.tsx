@@ -756,11 +756,26 @@ export default function Dashboard() {
             <div className="value">{pct(Math.max(...clientProfits.filter(c => c.margin > 0 && c.margin < 200).map(c => c.margin), 0))}</div>
             <div className="delta up">Top service line</div>
           </div>
-          <div className="kpi amber">
-            <div className="label">Concentration Risk</div>
-            <div className="value">HIGH</div>
-            <div className="delta" style={{ color: 'var(--amber)' }}>1 client dominant</div>
-          </div>
+          {(() => {
+            const byClient = clients.reduce<Record<string, number>>((acc, c) => {
+              acc[c.client] = (acc[c.client] ?? 0) + (c.monthlyRevenue[pidx] ?? 0);
+              return acc;
+            }, {});
+            const total = Object.values(byClient).reduce((a,b)=>a+b, 0);
+            const sorted = Object.entries(byClient).sort((a,b) => b[1] - a[1]);
+            const topShare = total > 0 && sorted.length ? (sorted[0][1] / total) * 100 : 0;
+            const level = topShare >= 60 ? 'HIGH' : topShare >= 40 ? 'MEDIUM' : 'LOW';
+            const cls   = topShare >= 60 ? 'amber' : topShare >= 40 ? '' : 'green';
+            return (
+              <div className={`kpi ${cls}`}>
+                <div className="label">Concentration Risk</div>
+                <div className="value">{level}</div>
+                <div className="delta" style={{ color: topShare >= 60 ? 'var(--amber)' : topShare >= 40 ? 'var(--muted)' : 'var(--green)' }}>
+                  {sorted[0]?.[0] ?? '—'} {topShare ? `· ${topShare.toFixed(0)}% of rev` : ''}
+                </div>
+              </div>
+            );
+          })()}
         </div>
 
         <div className="panel gap">
@@ -856,31 +871,64 @@ export default function Dashboard() {
           PEOPLE
       ══════════════════════════════════════════════════════════════ */}
       <div className={`page${tab === 'people' ? ' active' : ''}`}>
-        <div className="kpi-grid">
-          <div className="kpi"><div className="label">Team Members</div><div className="value">{teamMembers.length || 1}</div><div className="delta">Active delivery team</div></div>
-          <div className="kpi green"><div className="label">Avg Cost / Hour</div><div className="value">${(teamMembers[0]?.costPerHour || 333).toFixed(0)}</div><div className="delta">{teamMembers[0]?.name || 'Zenen'}</div></div>
-          <div className="kpi"><div className="label">Contracted Hrs / Mo</div><div className="value">{teamMembers[0]?.totalHours || 30} hrs</div><div className="delta">Per team member</div></div>
-          <div className="kpi amber"><div className="label">Clients Served</div><div className="value">{uniqueClients.filter(c => c.status?.toLowerCase().includes('active')).length}</div><div className="delta">Active accounts</div></div>
-        </div>
+        {(() => {
+          const active   = teamMembers.filter(m => m.status?.toLowerCase() === 'active');
+          const expected = teamMembers.filter(m => m.status?.toLowerCase() === 'expected');
+          const billable = active.filter(m => m.costPerHour > 0);
+          const avgCph   = billable.length ? billable.reduce((a, m) => a + m.costPerHour, 0) / billable.length : 0;
+          const totalHrs = active.reduce((a, m) => a + (m.totalHours || 0), 0);
+          const totalSal = active.reduce((a, m) => a + (m.contractedSalary || 0), 0);
+          return (
+            <div className="kpi-grid">
+              <div className="kpi">
+                <div className="label">Team Members</div>
+                <div className="value">{active.length}</div>
+                <div className="delta">{expected.length > 0 ? `+${expected.length} expected · ` : ''}Active delivery team</div>
+              </div>
+              <div className="kpi green">
+                <div className="label">Avg Cost / Hour</div>
+                <div className="value">${avgCph.toFixed(0)}</div>
+                <div className="delta">Across {billable.length} billable {billable.length === 1 ? 'member' : 'members'}</div>
+              </div>
+              <div className="kpi">
+                <div className="label">Total Contracted Hrs / Mo</div>
+                <div className="value">{totalHrs} hrs</div>
+                <div className="delta">{fmtFull(totalSal)} / mo payroll</div>
+              </div>
+              <div className="kpi amber">
+                <div className="label">Clients Served</div>
+                <div className="value">{uniqueClients.filter(c => c.status?.toLowerCase().includes('active')).length}</div>
+                <div className="delta">Active accounts</div>
+              </div>
+            </div>
+          );
+        })()}
 
         <div className="panel gap">
           <h2>Delivery Team</h2>
-          <div className="sub">Active service team members</div>
-          {(teamMembers.length > 0 ? teamMembers : [{ name: 'Zenen Chamizo', status: 'Active', department: 'Service Team', category: 'Delivery Team', startDate: '10-Aug-23', totalHours: 30, contractedSalary: 10000, costPerHour: 333 }]).map(m => (
-            <div key={m.name} className="person-card">
-              <div className="person-avatar">{m.name[0]}</div>
-              <div style={{ flex: 1 }}>
-                <div className="person-name">{m.name}</div>
-                <div className="person-role">{m.department} · {m.category} · Started {m.startDate}</div>
-                <div className="person-stats">
-                  <div className="ps-item"><div className="ps-l">Monthly Salary</div><div className="ps-v">{fmtFull(m.contractedSalary)}</div></div>
-                  <div className="ps-item"><div className="ps-l">Cost / Hour</div><div className="ps-v">${m.costPerHour > 0 ? m.costPerHour.toFixed(0) : 333}</div></div>
-                  <div className="ps-item"><div className="ps-l">Hours / Mo</div><div className="ps-v">{m.totalHours}</div></div>
-                  <div className="ps-item"><div className="ps-l">Status</div><div className="ps-v"><span className="pill active">{m.status}</span></div></div>
+          <div className="sub">All team members — active and expected</div>
+          {teamMembers.length === 0 ? (
+            <div style={{ color: 'var(--muted)', fontSize: 13, padding: 16 }}>No team members in sheet.</div>
+          ) : teamMembers.map(m => {
+            const isActive   = m.status?.toLowerCase() === 'active';
+            const isExpected = m.status?.toLowerCase() === 'expected';
+            const pillCls    = isActive ? 'active' : isExpected ? 'warn' : 'neutral';
+            return (
+              <div key={m.name} className="person-card">
+                <div className="person-avatar">{m.name[0]}</div>
+                <div style={{ flex: 1 }}>
+                  <div className="person-name">{m.name}</div>
+                  <div className="person-role">{m.department}{m.category ? ` · ${m.category}` : ''}{m.startDate ? ` · Started ${m.startDate}` : ''}</div>
+                  <div className="person-stats">
+                    <div className="ps-item"><div className="ps-l">Monthly Salary</div><div className="ps-v">{fmtFull(m.contractedSalary)}</div></div>
+                    <div className="ps-item"><div className="ps-l">Cost / Hour</div><div className="ps-v">${m.costPerHour > 0 ? m.costPerHour.toFixed(0) : '—'}</div></div>
+                    <div className="ps-item"><div className="ps-l">Hours / Mo</div><div className="ps-v">{m.totalHours}</div></div>
+                    <div className="ps-item"><div className="ps-l">Status</div><div className="ps-v"><span className={`pill ${pillCls}`}>{m.status}</span></div></div>
+                  </div>
                 </div>
               </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
 
         <div className="grid-2">
