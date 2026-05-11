@@ -150,6 +150,12 @@ export default function Dashboard() {
   const [plOpen, setPlOpen]   = useState<Record<string,boolean>>({});
   const [lastRefresh, setLR]  = useState(new Date());
   const [periodIdx, setPeriod] = useState<number>(-1); // -1 = latest
+  const [rangeStart, setRangeStart] = useState(0);
+  const [rangeEnd,   setRangeEnd]   = useState(-1);    // -1 = latest
+  const [momRevSearch, setMomRevSearch] = useState('');
+  const [momRevType,   setMomRevType]   = useState('');
+  const [momExpSearch, setMomExpSearch] = useState('');
+  const [momExpCat,    setMomExpCat]    = useState('');
 
   const load = useCallback(async () => {
     try {
@@ -226,6 +232,20 @@ export default function Dashboard() {
   const netMom = prev >= 0 ? mom(pl.netIncome[pidx], pl.netIncome[prev]) : { cls: 'flat', str: '—' };
   const mgPP   = prev >= 0 ? pp(pl.netMargin[pidx], pl.netMargin[prev]) : { cls: 'flat', str: '—' };
 
+  // Range filter (for MoM tables)
+  const rStart = Math.max(0, Math.min(rangeStart, N - 1));
+  const rEnd   = (rangeEnd >= 0 && rangeEnd < N) ? rangeEnd : N - 1;
+  const rangeLabels = labels.slice(rStart, rEnd + 1);
+
+  // Unique service types for Revenue filter
+  const serviceTypes = [...new Set(clients.map(c => c.service).filter(Boolean))];
+
+  // All expense category names for filter
+  const allExpCats = [
+    ...cogsCategories.map(c => c.name.replace('- Service Delivery','').trim()),
+    ...expenseCategories.filter(e => e.values.slice(0,N).some(v=>v>0)).map(e => e.name.replace(' Expenses','').replace('and other ','')),
+  ];
+
   return (
     <ErrorBoundary>
     <>
@@ -234,11 +254,20 @@ export default function Dashboard() {
         <div className="logo"><span>AGEN</span><span className="b">CFO</span><span className="x">×</span>SWELLWAVE MEDIA</div>
         <div className="header-right">
           <div className="last-updated">Data last updated: {lastRefresh.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}</div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 6, justifyContent: 'flex-end', marginTop: 4 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6, justifyContent: 'flex-end', marginTop: 4, flexWrap: 'wrap' }}>
+            <span style={{ fontSize: 10, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Period</span>
             <select value={pidx} onChange={e => setPeriod(Number(e.target.value))} style={{ background: 'var(--blue-soft)', color: 'var(--blue)', border: '1px solid rgba(19,144,235,0.35)', borderRadius: 100, fontFamily: 'inherit', fontSize: 10, fontWeight: 500, letterSpacing: '0.5px', padding: '2px 8px', cursor: 'pointer', textTransform: 'uppercase' }}>
               {labels.map((l, i) => <option key={l} value={i}>{l}</option>)}
             </select>
             <span className="period-badge">{pl.months[pidx]?.status ?? 'Actuals'}</span>
+            <span style={{ fontSize: 10, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '0.5px', marginLeft: 6 }}>Range</span>
+            <select value={rStart} onChange={e => setRangeStart(Number(e.target.value))} style={{ background: 'rgba(255,255,255,0.04)', color: 'var(--text)', border: '1px solid var(--card-border)', borderRadius: 100, fontFamily: 'inherit', fontSize: 10, padding: '2px 8px', cursor: 'pointer' }}>
+              {labels.map((l, i) => <option key={l} value={i}>{l}</option>)}
+            </select>
+            <span style={{ color: 'var(--muted)', fontSize: 11 }}>→</span>
+            <select value={rEnd} onChange={e => setRangeEnd(Number(e.target.value))} style={{ background: 'rgba(255,255,255,0.04)', color: 'var(--text)', border: '1px solid var(--card-border)', borderRadius: 100, fontFamily: 'inherit', fontSize: 10, padding: '2px 8px', cursor: 'pointer' }}>
+              {labels.map((l, i) => <option key={l} value={i}>{l}</option>)}
+            </select>
             <button onClick={load} title="Refresh" style={{ background: 'none', border: 'none', color: 'var(--muted)', cursor: 'pointer', fontSize: 14, padding: '0 2px', lineHeight: 1 }}>↻</button>
           </div>
         </div>
@@ -469,36 +498,64 @@ export default function Dashboard() {
         </div>
 
         <div className="panel gap">
-          <h2>Revenue by Service Line × Month</h2>
-          <div className="sub">Contracted fee per service line · scroll horizontally</div>
+          <h2>Revenue by Client × Month</h2>
+          <div className="sub">One row per client · service line — scroll horizontally · LTV column locked right</div>
+          <div className="filter-bar">
+            <input type="text" placeholder="Search client…" value={momRevSearch} onChange={e => setMomRevSearch(e.target.value)} style={{minWidth:200}} />
+            <select value={momRevType} onChange={e => setMomRevType(e.target.value)}>
+              <option value="">All Services</option>
+              {serviceTypes.map(s => <option key={s} value={s}>{s}</option>)}
+            </select>
+            {(() => {
+              const rows = clients.filter(c => c.client)
+                .filter(c => !momRevSearch || (c.client + ' ' + (c.service||'')).toLowerCase().includes(momRevSearch.toLowerCase()))
+                .filter(c => !momRevType || c.service === momRevType);
+              const rangeTotal = rows.reduce((sum, c) => sum + c.monthlyRevenue.slice(rStart, rEnd+1).reduce((a,b)=>a+b,0), 0);
+              return <span className="tbl-count">{rows.length} rows · {fmtFull(rangeTotal)} in range</span>;
+            })()}
+          </div>
           <div className="mom-wrap">
-            <table className="mom-tbl">
-              <thead>
-                <tr>
-                  <th className="col-frozen" style={{textAlign:'left', minWidth:220}}>Client · Service</th>
-                  {labels.map(l => <th key={l} style={{minWidth:110}}>{l}</th>)}
-                  <th style={{minWidth:110, color:'var(--blue)'}}>Total</th>
-                </tr>
-              </thead>
-              <tbody>
-                {clients.filter(c => c.client).map((c, i) => (
-                  <tr key={i}>
-                    <td className="col-frozen"><strong>{c.client}</strong>{c.service ? <span style={{color:'var(--muted)', fontWeight:400}}> · {c.service}</span> : null}</td>
-                    {c.monthlyRevenue.slice(0, N).map((v, j) => (
-                      <td key={j} className="num">{v === 0 ? <span className="cell-zero">—</span> : fmtFull(v)}</td>
+            {(() => {
+              let rows = clients.filter(c => c.client)
+                .filter(c => !momRevSearch || (c.client + ' ' + (c.service||'')).toLowerCase().includes(momRevSearch.toLowerCase()))
+                .filter(c => !momRevType || c.service === momRevType)
+                .map(c => ({ ...c, rangeTotal: c.monthlyRevenue.slice(rStart, rEnd+1).reduce((a,b)=>a+b,0) }))
+                .sort((a, b) => b.rangeTotal - a.rangeTotal);
+              const colTotals = rangeLabels.map((_, i) =>
+                rows.reduce((sum, c) => sum + (c.monthlyRevenue[rStart + i] ?? 0), 0)
+              );
+              const grandTotal = colTotals.reduce((a,b)=>a+b,0);
+              return (
+                <table className="mom-tbl">
+                  <thead>
+                    <tr>
+                      <th className="col-frozen" style={{textAlign:'left', minWidth:220}}>Client · Service</th>
+                      <th style={{minWidth:110, color:'var(--blue)'}}>LTV (range)</th>
+                      {rangeLabels.map(l => <th key={l} style={{minWidth:110}}>{l}</th>)}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {rows.map((c, i) => (
+                      <tr key={i}>
+                        <td className="col-frozen"><strong>{c.client}</strong>{c.service ? <span style={{color:'var(--muted)', fontWeight:400}}> · {c.service}</span> : null}</td>
+                        <td className="num" style={{color:'var(--blue)'}}><strong>{fmtFull(c.rangeTotal)}</strong></td>
+                        {rangeLabels.map((_, j) => {
+                          const v = c.monthlyRevenue[rStart + j] ?? 0;
+                          return <td key={j} className="num">{v > 0 ? fmtFull(v) : <span className="cell-zero">—</span>}</td>;
+                        })}
+                      </tr>
                     ))}
-                    <td className="num" style={{color:'var(--blue)'}}><strong>{fmtFull(c.monthlyRevenue.slice(0,pidx+1).reduce((a,b)=>a+b,0))}</strong></td>
-                  </tr>
-                ))}
-              </tbody>
-              <tfoot>
-                <tr>
-                  <td className="col-frozen"><strong>Total</strong></td>
-                  {pl.revenue.map((v, i) => <td key={i} className="num"><strong>{fmtFull(v)}</strong></td>)}
-                  <td className="num" style={{color:'var(--green)'}}><strong>{fmtFull(ytdRev)}</strong></td>
-                </tr>
-              </tfoot>
-            </table>
+                  </tbody>
+                  <tfoot>
+                    <tr>
+                      <td className="col-frozen"><strong>Total</strong></td>
+                      <td className="num" style={{color:'var(--green)'}}><strong>{fmtFull(grandTotal)}</strong></td>
+                      {colTotals.map((v, i) => <td key={i} className="num"><strong>{fmtFull(v)}</strong></td>)}
+                    </tr>
+                  </tfoot>
+                </table>
+              );
+            })()}
           </div>
         </div>
       </div>
@@ -612,46 +669,69 @@ export default function Dashboard() {
 
         <div className="panel gap">
           <h2>Spend by Category × Month</h2>
-          <div className="sub">All expense categories — YTD total locked right</div>
+          <div className="sub">One row per expense category · scroll horizontally · total locked right</div>
+          <div className="filter-bar">
+            <input type="text" placeholder="Search category…" value={momExpSearch} onChange={e => setMomExpSearch(e.target.value)} style={{minWidth:200}} />
+            <select value={momExpCat} onChange={e => setMomExpCat(e.target.value)}>
+              <option value="">All Categories</option>
+              <option value="COGS">COGS</option>
+              <option value="OpEx">OpEx</option>
+            </select>
+            {(() => {
+              const cogsRows = cogsCategories.map(c => ({ name: c.name.replace('- Service Delivery','').trim(), type:'COGS', values: c.values }));
+              const opexRows = expenseCategories.filter(e => e.values.slice(0,N).some(v=>v>0)).map(e => ({ name: e.name.replace(' Expenses','').replace('and other ',''), type:'OpEx', values: e.values }));
+              const all = [...cogsRows, ...opexRows]
+                .filter(r => !momExpSearch || r.name.toLowerCase().includes(momExpSearch.toLowerCase()))
+                .filter(r => !momExpCat || r.type === momExpCat);
+              const rangeTotal = all.reduce((sum, r) => sum + r.values.slice(rStart, rEnd+1).reduce((a,b)=>a+b,0), 0);
+              return <span className="tbl-count">{all.length} categories · {fmtFull(rangeTotal)} in range</span>;
+            })()}
+          </div>
           <div className="mom-wrap">
-            <table className="mom-tbl">
-              <thead>
-                <tr>
-                  <th className="col-frozen" style={{textAlign:'left', minWidth:200}}>Category</th>
-                  <th style={{minWidth:64}}>Type</th>
-                  {labels.map(l => <th key={l} style={{minWidth:110}}>{l}</th>)}
-                  <th style={{minWidth:110, color:'var(--amber)'}}>YTD</th>
-                </tr>
-              </thead>
-              <tbody>
-                <tr><td className="col-frozen" style={{color:'var(--muted)', fontSize:11, textTransform:'uppercase', letterSpacing:'0.7px', paddingTop:10}}>Cost of Goods Sold</td><td />{Array(N).fill(null).map((_,i) => <td key={i} />)}<td /></tr>
-                {cogsCategories.map(c => (
-                  <tr key={c.name}>
-                    <td className="col-frozen" style={{paddingLeft:12}}>{c.name.replace('- Service Delivery','').trim()}</td>
-                    <td><span className="pill info">COGS</span></td>
-                    {c.values.slice(0,N).map((v,j) => <td key={j} className="num" style={{color: v > 0 ? 'var(--red)' : undefined}}>{v > 0 ? fmtFull(v) : <span className="cell-zero">—</span>}</td>)}
-                    <td className="num" style={{color:'var(--amber)'}}><strong>{fmtFull(c.values.slice(0,pidx+1).reduce((a,b)=>a+b,0))}</strong></td>
-                  </tr>
-                ))}
-                <tr><td className="col-frozen" style={{color:'var(--muted)', fontSize:11, textTransform:'uppercase', letterSpacing:'0.7px', paddingTop:10}}>Operating Expenses</td><td />{Array(N).fill(null).map((_,i) => <td key={i} />)}<td /></tr>
-                {expenseCategories.filter(e => e.values.slice(0,N).some(v => v > 0)).map(e => (
-                  <tr key={e.name}>
-                    <td className="col-frozen" style={{paddingLeft:12}}>{e.name.replace(' Expenses','').replace('and other ','')}</td>
-                    <td><span className="pill warn">OpEx</span></td>
-                    {e.values.slice(0,N).map((v,j) => <td key={j} className="num" style={{color: v > 0 ? 'var(--amber)' : undefined}}>{v > 0 ? fmtFull(v) : <span className="cell-zero">—</span>}</td>)}
-                    <td className="num" style={{color:'var(--amber)'}}><strong>{fmtFull(e.values.slice(0,pidx+1).reduce((a,b)=>a+b,0))}</strong></td>
-                  </tr>
-                ))}
-              </tbody>
-              <tfoot>
-                <tr>
-                  <td className="col-frozen"><strong>Total Spend</strong></td>
-                  <td />
-                  {pl.cogs.map((v,i) => <td key={i} className="num"><strong>{fmtFull(v + (pl.opex[i] ?? 0))}</strong></td>)}
-                  <td className="num" style={{color:'var(--amber)'}}><strong>{fmtFull(ytdCogs + ytdOpex)}</strong></td>
-                </tr>
-              </tfoot>
-            </table>
+            {(() => {
+              const cogsRows = cogsCategories.map(c => ({ name: c.name.replace('- Service Delivery','').trim(), type:'COGS' as const, values: c.values }));
+              const opexRows = expenseCategories.filter(e => e.values.slice(0,N).some(v=>v>0)).map(e => ({ name: e.name.replace(' Expenses','').replace('and other ',''), type:'OpEx' as const, values: e.values }));
+              const rows = [...cogsRows, ...opexRows]
+                .filter(r => !momExpSearch || r.name.toLowerCase().includes(momExpSearch.toLowerCase()))
+                .filter(r => !momExpCat || r.type === momExpCat)
+                .map(r => ({ ...r, rangeTotal: r.values.slice(rStart, rEnd+1).reduce((a,b)=>a+b,0) }))
+                .sort((a,b) => b.rangeTotal - a.rangeTotal);
+              const colTotals = rangeLabels.map((_, i) => rows.reduce((sum, r) => sum + (r.values[rStart + i] ?? 0), 0));
+              const grandTotal = colTotals.reduce((a,b)=>a+b,0);
+              return (
+                <table className="mom-tbl">
+                  <thead>
+                    <tr>
+                      <th className="col-frozen" style={{textAlign:'left', minWidth:200}}>Category</th>
+                      <th style={{minWidth:64}}>Type</th>
+                      <th style={{minWidth:110, color:'var(--amber)'}}>Total (range)</th>
+                      {rangeLabels.map(l => <th key={l} style={{minWidth:110}}>{l}</th>)}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {rows.map((r, i) => (
+                      <tr key={i}>
+                        <td className="col-frozen">{r.name}</td>
+                        <td><span className={`pill ${r.type === 'COGS' ? 'info' : 'warn'}`}>{r.type}</span></td>
+                        <td className="num" style={{color:'var(--amber)'}}><strong>{fmtFull(r.rangeTotal)}</strong></td>
+                        {rangeLabels.map((_, j) => {
+                          const v = r.values[rStart + j] ?? 0;
+                          return <td key={j} className="num" style={{color: v > 0 ? (r.type==='COGS' ? 'var(--red)' : 'var(--amber)') : undefined}}>{v > 0 ? fmtFull(v) : <span className="cell-zero">—</span>}</td>;
+                        })}
+                      </tr>
+                    ))}
+                  </tbody>
+                  <tfoot>
+                    <tr>
+                      <td className="col-frozen"><strong>Total Spend</strong></td>
+                      <td>—</td>
+                      <td className="num" style={{color:'var(--amber)'}}><strong>{fmtFull(grandTotal)}</strong></td>
+                      {colTotals.map((v, i) => <td key={i} className="num"><strong>{fmtFull(v)}</strong></td>)}
+                    </tr>
+                  </tfoot>
+                </table>
+              );
+            })()}
           </div>
         </div>
       </div>

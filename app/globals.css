@@ -130,6 +130,12 @@ tr:last-child td { border-bottom:none; }
 .ii.neu  { color:var(--muted); }
 .plbtn { background:none; border:none; color:var(--blue); font-size:9px; padding:0; margin-right:6px; cursor:pointer; display:inline-block; transition:transform 0.18s; vertical-align:middle; line-height:1; }
 .plbtn.open { transform:rotate(90deg); }
+.filter-bar { display:flex; gap:10px; align-items:center; margin-bottom:12px; flex-wrap:wrap; }
+.filter-bar select, .filter-bar input { background:rgba(255,255,255,0.06); border:1px solid var(--card-border); color:var(--text); border-radius:8px; padding:6px 12px; font-family:var(--font-body); font-size:12px; outline:none; min-width:120px; }
+.filter-bar select:focus, .filter-bar input:focus { border-color:var(--blue); }
+.filter-bar select option { background:#001a2e; }
+.filter-label { font-size:11px; color:var(--muted); text-transform:uppercase; letter-spacing:0.7px; }
+.tbl-count { font-size:11px; color:var(--muted); margin-left:auto; }
 .mom-wrap { position:relative; overflow-x:auto; overflow-y:auto; max-height:460px; border-radius:8px; }
 .mom-tbl { border-collapse:separate; border-spacing:0; min-width:100%; }
 .mom-tbl th, .mom-tbl td { padding:8px 12px; white-space:nowrap; border-bottom:1px solid rgba(255,255,255,0.03); background:transparent; }
