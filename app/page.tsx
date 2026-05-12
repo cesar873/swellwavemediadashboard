@@ -246,6 +246,11 @@ export default function Dashboard() {
 
   const maxProfit = Math.max(...clientProfits.map(c => Math.abs(c.profit)), 1);
 
+  // Operating margin = (Revenue − COGS − OpEx) / Revenue
+  const operatingMargin = pl.revenue.map((r, i) =>
+    r > 0 ? +(((r - (pl.cogs[i] ?? 0) - (pl.opex[i] ?? 0)) / r) * 100).toFixed(2) : 0
+  );
+
   const revMom = prev >= 0 ? mom(pl.revenue[pidx], pl.revenue[prev]) : { cls: 'flat', str: '—' };
   const netMom = prev >= 0 ? mom(pl.netIncome[pidx], pl.netIncome[prev]) : { cls: 'flat', str: '—' };
   const mgPP   = prev >= 0 ? pp(pl.netMargin[pidx], pl.netMargin[prev]) : { cls: 'flat', str: '—' };
@@ -339,9 +344,9 @@ export default function Dashboard() {
           </div>
           <div className="panel">
             <h2>Monthly Margins</h2>
-            <div className="sub">Gross margin vs net margin trend</div>
+            <div className="sub">Gross margin vs operating margin trend</div>
             <div className="chart-wrap tall">
-              <DualMarginChart labels={labels} gross={pl.grossMargin} net={pl.netMargin} />
+              <DualMarginChart labels={labels} gross={pl.grossMargin} operating={operatingMargin} />
             </div>
           </div>
         </div>

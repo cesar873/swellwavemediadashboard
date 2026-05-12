@@ -117,17 +117,17 @@ export function MarginChart({ labels, values, color, min, max }: {
   return <ChartCanvas config={config} />;
 }
 
-// ── Dual margin line chart (gross % + net %) ─────────────────────────────────
-export function DualMarginChart({ labels, gross, net }: {
-  labels: string[]; gross: number[]; net: number[];
+// ── Dual margin line chart (gross % + operating %) ───────────────────────────
+export function DualMarginChart({ labels, gross, operating }: {
+  labels: string[]; gross: number[]; operating: number[];
 }) {
   const config: ChartConfiguration = {
     type: 'line',
     data: {
       labels,
       datasets: [
-        { label: 'Gross Margin', data: gross, borderColor: BLUE, backgroundColor: 'rgba(19,144,235,0.08)', tension: 0.35, pointRadius: 4, borderWidth: 2.5, fill: false, pointBackgroundColor: BLUE },
-        { label: 'Net Margin',   data: net,   borderColor: GREEN, backgroundColor: 'rgba(34,197,94,0.08)',  tension: 0.35, pointRadius: 4, borderWidth: 2.5, fill: false, pointBackgroundColor: GREEN },
+        { label: 'Gross Margin',     data: gross,     borderColor: BLUE,  backgroundColor: 'rgba(19,144,235,0.08)', tension: 0.35, pointRadius: 4, borderWidth: 2.5, fill: false, pointBackgroundColor: BLUE  },
+        { label: 'Operating Margin', data: operating, borderColor: GREEN, backgroundColor: 'rgba(34,197,94,0.08)',  tension: 0.35, pointRadius: 4, borderWidth: 2.5, fill: false, pointBackgroundColor: GREEN },
       ],
     },
     options: {
