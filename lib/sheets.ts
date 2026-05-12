@@ -1,5 +1,5 @@
 import { google } from 'googleapis';
-import type { DashboardData, PLData, ExpenseCategory, COGSCategory, ClientRow, ClientProfit, TeamMember, ServiceCapacity, Transaction } from './types';
+import type { DashboardData, PLData, ExpenseCategory, COGSCategory, ClientRow, ClientProfit, TeamMember, ServiceCapacity, Transaction, BudgetRow } from './types';
 
 const SPREADSHEET_ID = '1JkaZ1qfrWqEwmSmG-sjdgQ0a3ZaQHtD5zl_RgehqdeY';
 
@@ -348,6 +348,37 @@ export async function fetchDashboardData(): Promise<DashboardData> {
     }
   }
 
+  // ── Budget vs Actuals ─────────────────────────────────────────────────────
+  const budgetGrid = allGrids.find(g => g.title.toLowerCase() === 'budget')?.grid ?? [];
+  const budget: BudgetRow[] = [];
+  if (budgetGrid.length > 1) {
+    const hdr = budgetGrid[0];
+    const colExact = (k: string) => hdr.findIndex(c => parseStr(c).toLowerCase() === k.toLowerCase());
+    const iMonth  = colExact('Month');
+    const iCat    = colExact('Category');
+    const iGroup  = colExact('Group');
+    const iBudget = colExact('Budget');
+    const iActual = colExact('Actual');
+    const iVarD   = colExact('Variance $');
+    const iVarP   = colExact('Variance %');
+
+    for (let r = 1; r < budgetGrid.length; r++) {
+      const row = budgetGrid[r];
+      const month    = iMonth  >= 0 ? parseStr(row[iMonth]).trim() : '';
+      const category = iCat    >= 0 ? parseStr(row[iCat])          : '';
+      if (!month || !category) continue;
+      const group    = iGroup  >= 0 ? parseStr(row[iGroup])        : '';
+      budget.push({
+        month, category, group,
+        budget:         iBudget >= 0 ? parseNum(row[iBudget]) : 0,
+        actual:         iActual >= 0 ? parseNum(row[iActual]) : 0,
+        varianceDollar: iVarD   >= 0 ? parseNum(row[iVarD])   : 0,
+        variancePct:    iVarP   >= 0 ? parseNum(row[iVarP])   : 0,
+        isTotal: /^total\s/i.test(category),
+      });
+    }
+  }
+
   return {
     lastUpdated: new Date().toISOString(),
     pl,
@@ -358,5 +389,6 @@ export async function fetchDashboardData(): Promise<DashboardData> {
     teamMembers,
     serviceCapacity,
     transactions,
+    budget,
   };
 }

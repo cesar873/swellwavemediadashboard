@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState, useCallback, useMemo, Component, type ReactNode } from 'react';
+import React, { useEffect, useState, useCallback, useMemo, Component, type ReactNode } from 'react';
 
 // ── Error boundary ────────────────────────────────────────────────────────────
 class ErrorBoundary extends Component<{ children: ReactNode }, { error: string | null }> {
@@ -212,7 +212,7 @@ export default function Dashboard() {
     </>
   );
 
-  const { pl, expenseCategories, cogsCategories, clients, clientProfits, teamMembers, serviceCapacity, transactions = [] } = data!;
+  const { pl, expenseCategories, cogsCategories, clients, clientProfits, teamMembers, serviceCapacity, transactions = [], budget = [] } = data!;
   const N = pl.months.length;
   const pidx = periodIdx >= 0 && periodIdx < N ? periodIdx : N - 1;
   const prev = pidx - 1;
@@ -419,6 +419,150 @@ export default function Dashboard() {
             </table>
           </div>
         </div>
+
+        {/* ─── Budget vs Actuals ─────────────────────────────────────── */}
+        {(() => {
+          if (!budget.length) return null;
+          const currentMonthKey = labels[pidx]?.trim().toLowerCase() ?? '';
+          const rowsThisMonth = budget.filter(b => b.month.trim().toLowerCase() === currentMonthKey);
+          if (!rowsThisMonth.length) return null;
+
+          // Aggregate by group (excluding "Total X" subtotals)
+          const agg = (g: string) => {
+            const rs = rowsThisMonth.filter(b => b.group === g && !b.isTotal);
+            return {
+              budget: rs.reduce((a, b) => a + b.budget, 0),
+              actual: rs.reduce((a, b) => a + b.actual, 0),
+            };
+          };
+          const totRev  = agg('Revenue');
+          const totCogs = agg('COGS');
+          const totOpex = agg('Expenses');
+          const netActual = totRev.actual - totCogs.actual - totOpex.actual;
+          const netBudget = totRev.budget - totCogs.budget - totOpex.budget;
+
+          const Card = ({ label, b, a, positiveIsGood }: { label: string; b: number; a: number; positiveIsGood: boolean }) => {
+            const v = a - b;
+            const pctV = b !== 0 ? (v / Math.abs(b)) * 100 : 0;
+            const isGood = positiveIsGood ? v >= 0 : v <= 0;
+            const cls = b === 0 ? '' : isGood ? 'good' : 'bad';
+            const arrow = v === 0 ? '—' : v > 0 ? '▲' : '▼';
+            return (
+              <div className={`bva-card ${cls}`}>
+                <div className="bl">{label}</div>
+                <div className="bv">{fmtFull(a)}</div>
+                <div className="bs"><span>Budget</span><span>{fmtFull(b)}</span></div>
+                <div className={`bvar ${cls}`}>{arrow} {v >= 0 ? '+' : ''}{fmtFull(v)} {b !== 0 ? `(${pctV >= 0 ? '+' : ''}${pctV.toFixed(1)}%)` : ''}</div>
+              </div>
+            );
+          };
+
+          // Detail table rows by group
+          const groupOrder: { name: string; positiveIsGood: boolean; title: string }[] = [
+            { name: 'Revenue',  positiveIsGood: true,  title: 'Revenue' },
+            { name: 'COGS',     positiveIsGood: false, title: 'Cost of Sales' },
+            { name: 'Expenses', positiveIsGood: false, title: 'Operating Expenses' },
+          ];
+
+          // Bar viz: shows actual vs budget on a normalized track
+          const Bar = ({ b, a, positiveIsGood }: { b: number; a: number; positiveIsGood: boolean }) => {
+            if (b <= 0 && a <= 0) return <span style={{color:'var(--muted)', fontSize:11}}>—</span>;
+            const max = Math.max(b, a, 1);
+            const bPct = (b / max) * 100;
+            const aPct = (a / max) * 100;
+            const isGood = positiveIsGood ? a >= b : a <= b;
+            const fillColor = isGood ? 'var(--green)' : 'var(--red)';
+            return (
+              <div className="bva-bar" title={`Actual ${fmtFull(a)} / Budget ${fmtFull(b)}`}>
+                <div className="bva-bar-fill" style={{ width: `${aPct}%`, background: fillColor, opacity: 0.85 }} />
+                {b > 0 ? <div className="bva-bar-mark" style={{ left: `${bPct}%` }} /> : null}
+              </div>
+            );
+          };
+
+          return (
+            <div className="panel gap">
+              <h2>Budget vs Actuals · {labels[pidx]}</h2>
+              <div className="sub">Variance analysis by category — change the period selector at the top to drill into another month</div>
+
+              <div className="metrics-strip" style={{ marginTop: 8 }}>
+                <Card label="Revenue"            b={totRev.budget}  a={totRev.actual}  positiveIsGood />
+                <Card label="Cost of Sales"      b={totCogs.budget} a={totCogs.actual} positiveIsGood={false} />
+                <Card label="Operating Expenses" b={totOpex.budget} a={totOpex.actual} positiveIsGood={false} />
+                <Card label="Net Income"         b={netBudget}      a={netActual}      positiveIsGood />
+              </div>
+
+              <div className="tbl-scroll" style={{ marginTop: 16 }}>
+                <table>
+                  <thead>
+                    <tr>
+                      <th style={{ minWidth: 200 }}>Category</th>
+                      <th className="num">Budget</th>
+                      <th className="num">Actual</th>
+                      <th className="num">Variance $</th>
+                      <th className="num">Variance %</th>
+                      <th>Progress</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {groupOrder.map(g => {
+                      const detail = rowsThisMonth.filter(b => b.group === g.name && !b.isTotal);
+                      if (!detail.length) return null;
+                      const subB = detail.reduce((a, b) => a + b.budget, 0);
+                      const subA = detail.reduce((a, b) => a + b.actual, 0);
+                      const subV = subA - subB;
+                      const subVPct = subB !== 0 ? (subV / Math.abs(subB)) * 100 : 0;
+                      const subGood = g.positiveIsGood ? subV >= 0 : subV <= 0;
+                      const subColor = subB === 0 ? 'var(--muted)' : subGood ? 'var(--green)' : 'var(--red)';
+                      return (
+                        <React.Fragment key={g.name}>
+                          <tr className="bva-section"><td colSpan={6}>{g.title}</td></tr>
+                          {detail.map((r, i) => {
+                            const v = r.actual - r.budget;
+                            const vPct = r.budget !== 0 ? (v / Math.abs(r.budget)) * 100 : 0;
+                            const isGood = g.positiveIsGood ? v >= 0 : v <= 0;
+                            const color = r.budget === 0 ? 'var(--muted)' : isGood ? 'var(--green)' : 'var(--red)';
+                            return (
+                              <tr key={i}>
+                                <td style={{ paddingLeft: 14 }}>{r.category}</td>
+                                <td className="num">{r.budget > 0 ? fmtFull(r.budget) : <span style={{ color: 'var(--muted)' }}>—</span>}</td>
+                                <td className="num"><strong>{fmtFull(r.actual)}</strong></td>
+                                <td className="num" style={{ color }}>{r.budget === 0 ? '—' : (v >= 0 ? '+' : '') + fmtFull(v)}</td>
+                                <td className="num" style={{ color }}>{r.budget === 0 ? '—' : (vPct >= 0 ? '+' : '') + vPct.toFixed(1) + '%'}</td>
+                                <td><Bar b={r.budget} a={r.actual} positiveIsGood={g.positiveIsGood} /></td>
+                              </tr>
+                            );
+                          })}
+                          <tr className="bva-subtotal">
+                            <td><strong>Total {g.title}</strong></td>
+                            <td className="num"><strong>{fmtFull(subB)}</strong></td>
+                            <td className="num"><strong>{fmtFull(subA)}</strong></td>
+                            <td className="num" style={{ color: subColor }}><strong>{(subV >= 0 ? '+' : '') + fmtFull(subV)}</strong></td>
+                            <td className="num" style={{ color: subColor }}><strong>{subB === 0 ? '—' : (subVPct >= 0 ? '+' : '') + subVPct.toFixed(1) + '%'}</strong></td>
+                            <td><Bar b={subB} a={subA} positiveIsGood={g.positiveIsGood} /></td>
+                          </tr>
+                        </React.Fragment>
+                      );
+                    })}
+                    {/* Net Income row */}
+                    <tr className="grand-total">
+                      <td><strong>Net Income</strong></td>
+                      <td className="num"><strong>{fmtFull(netBudget)}</strong></td>
+                      <td className="num"><strong>{fmtFull(netActual)}</strong></td>
+                      <td className="num" style={{ color: (netActual - netBudget) >= 0 ? 'var(--green)' : 'var(--red)' }}>
+                        <strong>{(netActual - netBudget >= 0 ? '+' : '') + fmtFull(netActual - netBudget)}</strong>
+                      </td>
+                      <td className="num" style={{ color: (netActual - netBudget) >= 0 ? 'var(--green)' : 'var(--red)' }}>
+                        <strong>{netBudget === 0 ? '—' : (((netActual - netBudget) / Math.abs(netBudget)) * 100 >= 0 ? '+' : '') + (((netActual - netBudget) / Math.abs(netBudget)) * 100).toFixed(1) + '%'}</strong>
+                      </td>
+                      <td><Bar b={netBudget} a={netActual} positiveIsGood /></td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          );
+        })()}
 
       </div>
 

@@ -66,6 +66,17 @@ export interface ServiceCapacity {
   totalHours: number;
 }
 
+export interface BudgetRow {
+  month: string;        // "Jan 2026" (trimmed)
+  category: string;
+  group: 'Revenue' | 'COGS' | 'Expenses' | 'Metrics' | string;
+  budget: number;
+  actual: number;
+  varianceDollar: number;  // budget - actual
+  variancePct: number;     // sheet's stored % (already a number like 64)
+  isTotal: boolean;        // true for "Total Revenue", "Total Cost of Sales", etc.
+}
+
 export interface Transaction {
   date: string;            // ISO yyyy-mm-dd or formatted string
   id: string;
@@ -87,4 +98,5 @@ export interface DashboardData {
   teamMembers: TeamMember[];
   serviceCapacity: ServiceCapacity[];
   transactions: Transaction[];
+  budget: BudgetRow[];
 }

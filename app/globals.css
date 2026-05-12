@@ -130,6 +130,22 @@ tr:last-child td { border-bottom:none; }
 .ii.neu  { color:var(--muted); }
 .plbtn { background:none; border:none; color:var(--blue); font-size:9px; padding:0; margin-right:6px; cursor:pointer; display:inline-block; transition:transform 0.18s; vertical-align:middle; line-height:1; }
 .plbtn.open { transform:rotate(90deg); }
+/* Budget vs Actuals */
+.bva-card { background:var(--card-strong); border:1px solid var(--card-border); border-radius:10px; padding:14px 18px; position:relative; overflow:hidden; }
+.bva-card::before { content:''; position:absolute; top:0; left:0; right:0; height:2px; background:var(--blue); }
+.bva-card.good::before { background:var(--green); }
+.bva-card.bad::before  { background:var(--red); }
+.bva-card .bl { font-size:10px; color:var(--muted); text-transform:uppercase; letter-spacing:0.8px; }
+.bva-card .bv { font-family:var(--font-head); font-size:22px; line-height:1.1; margin-top:6px; }
+.bva-card .bs { font-size:11px; color:var(--muted); margin-top:4px; display:flex; justify-content:space-between; gap:8px; }
+.bva-card .bvar { font-size:11px; margin-top:6px; font-weight:600; }
+.bva-card .bvar.good { color:var(--green); }
+.bva-card .bvar.bad  { color:var(--red); }
+.bva-section td { padding-top:14px !important; font-family:var(--font-head); font-size:11px; letter-spacing:1px; color:var(--blue); text-transform:uppercase; border-bottom:1px solid rgba(19,144,235,0.18) !important; }
+.bva-subtotal td { font-weight:700; border-top:1px solid var(--card-border); background:rgba(255,255,255,0.02); }
+.bva-bar { display:inline-block; width:120px; height:8px; background:rgba(255,255,255,0.06); border-radius:4px; overflow:hidden; position:relative; vertical-align:middle; }
+.bva-bar-fill { position:absolute; left:0; top:0; bottom:0; border-radius:4px; }
+.bva-bar-mark { position:absolute; top:-3px; bottom:-3px; width:2px; background:rgba(255,255,255,0.5); }
 .filter-bar { display:flex; gap:10px; align-items:center; margin-bottom:12px; flex-wrap:wrap; }
 .filter-bar select, .filter-bar input { background:rgba(255,255,255,0.06); border:1px solid var(--card-border); color:var(--text); border-radius:8px; padding:6px 12px; font-family:var(--font-body); font-size:12px; outline:none; min-width:120px; }
 .filter-bar select:focus, .filter-bar input:focus { border-color:var(--blue); }
