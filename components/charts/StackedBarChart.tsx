@@ -65,17 +65,21 @@ export function StackedBarChart({
     return { ...row, __total: total };
   });
   const palette = PALETTES[paletteSort];
-  // Sort series by total descending; biggest at base (last to render in stack)
+  // Sort biggest → smallest so the largest series renders at the BASE of the
+  // stack (first child of <BarChart> is the bottom layer in Recharts).
   const totals = new Map<string, number>();
   for (const s of series) {
     let total = 0;
     for (const row of data) total += Number(row[s.key] ?? 0);
     totals.set(s.key, total);
   }
-  const sorted = [...series].sort((a, b) => (totals.get(a.key) ?? 0) - (totals.get(b.key) ?? 0));
+  const sorted = [...series].sort((a, b) => (totals.get(b.key) ?? 0) - (totals.get(a.key) ?? 0));
+  // Safe positive modulo so palette never returns undefined (which Recharts
+  // renders as black fill) when there are more series than palette colours.
+  const pick = (i: number) => palette[((i % palette.length) + palette.length) % palette.length];
   const withColor = sorted.map((s, i) => ({
     ...s,
-    color: s.color ?? palette[(palette.length - 1 - i) % palette.length],
+    color: s.color ?? pick(i),
   }));
 
   return (
