@@ -1,5 +1,6 @@
 "use client";
 
+import { ArrowDown, ArrowUp } from "lucide-react";
 import { formatLong } from "../charts/chart-shared";
 import { cn } from "@/lib/utils";
 
@@ -42,10 +43,89 @@ function BarViz({ b, a, positiveIsGood }: { b: number; a: number; positiveIsGood
   );
 }
 
+function ScorecardTile({
+  label,
+  actual,
+  budget,
+  positiveIsGood,
+  emphasis,
+}: {
+  label: string;
+  actual: number;
+  budget: number;
+  positiveIsGood: boolean;
+  emphasis?: "primary";
+}) {
+  const v = actual - budget;
+  const pct = budget !== 0 ? (v / Math.abs(budget)) * 100 : 0;
+  const direction = v >= 0 ? "up" : "down";
+  const isGood = budget === 0 ? null : positiveIsGood ? v >= 0 : v <= 0;
+  const accent = isGood == null ? "var(--muted)" : isGood ? "var(--green)" : "var(--red)";
+  return (
+    <div
+      className={cn(
+        "relative overflow-hidden rounded-xl border border-[var(--card-border)] bg-[var(--card)] px-4 py-3 backdrop-blur",
+        emphasis === "primary" && "border-[var(--blue)]/40",
+      )}
+    >
+      <span aria-hidden className="absolute inset-x-0 top-0 h-[2px]" style={{ background: accent }} />
+      <div className="text-[11px] uppercase tracking-[0.08em] text-[color:var(--muted)]">{label}</div>
+      <div className="anton mt-1.5 text-[26px] leading-[1.1]" style={emphasis === "primary" ? { color: "var(--blue)" } : undefined}>
+        {formatLong(actual, "currency")}
+      </div>
+      <div className="mt-1 flex items-center gap-1 text-xs text-[color:var(--muted)] tabular-nums">
+        {budget !== 0 && (
+          <>
+            {direction === "up" ? (
+              <ArrowUp className="h-3 w-3" style={{ color: accent }} />
+            ) : (
+              <ArrowDown className="h-3 w-3" style={{ color: accent }} />
+            )}
+            <span style={{ color: accent }}>
+              {(pct >= 0 ? "+" : "") + pct.toFixed(1)}%
+            </span>
+          </>
+        )}
+        <span className="text-[color:var(--muted)]">vs budget {formatLong(budget, "currency")}</span>
+      </div>
+    </div>
+  );
+}
+
 export function BudgetVsActualTable({ groups, netRow, rangeLabel }: BudgetVsActualTableProps) {
   void rangeLabel;
+  // Roll up each group for the scorecards.
+  const scorecards = groups.map(g => {
+    const budget = g.subTotal?.budget ?? g.rows.reduce((a, r) => a + r.budget, 0);
+    const actual = g.subTotal?.actual ?? g.rows.reduce((a, r) => a + r.actual, 0);
+    return { name: g.name, budget, actual, positiveIsGood: g.positiveIsGood };
+  });
   return (
-    <div className="overflow-x-auto">
+    <div>
+      {(scorecards.length > 0 || netRow) && (
+        <div className="mb-5 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
+          {scorecards.map(sc => (
+            <ScorecardTile
+              key={sc.name}
+              label={sc.name}
+              actual={sc.actual}
+              budget={sc.budget}
+              positiveIsGood={sc.positiveIsGood}
+            />
+          ))}
+          {netRow && (
+            <ScorecardTile
+              label={netRow.label}
+              actual={netRow.actual}
+              budget={netRow.budget}
+              positiveIsGood
+              emphasis="primary"
+            />
+          )}
+        </div>
+      )}
+
+      <div className="overflow-x-auto">
       <table className="w-full border-separate border-spacing-0 text-[13px]">
         <thead>
           <tr>
@@ -121,6 +201,7 @@ export function BudgetVsActualTable({ groups, netRow, rangeLabel }: BudgetVsActu
           )}
         </tbody>
       </table>
+      </div>
     </div>
   );
 }

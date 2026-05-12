@@ -4,6 +4,7 @@ import {
   Bar,
   BarChart,
   CartesianGrid,
+  LabelList,
   ReferenceArea,
   ResponsiveContainer,
   Tooltip,
@@ -16,6 +17,7 @@ import {
   PALETTE_BLUE,
   PALETTE_RED,
   PALETTE_GREEN,
+  LABEL_FILL,
   formatCompact,
   type ChartFormat,
 } from "./chart-shared";
@@ -55,6 +57,13 @@ export function StackedBarChart({
     forecastStartIndex < data.length;
   const forecastX1 = hasForecast ? (data[forecastStartIndex!][xKey] as string | number) : null;
   const forecastX2 = hasForecast ? (data[data.length - 1][xKey] as string | number) : null;
+
+  // Per-bar total (used for the data label drawn above each stack).
+  const dataWithTotals = data.map(row => {
+    let total = 0;
+    for (const s of series) total += Number(row[s.key] ?? 0);
+    return { ...row, __total: total };
+  });
   const palette = PALETTES[paletteSort];
   // Sort series by total descending; biggest at base (last to render in stack)
   const totals = new Map<string, number>();
@@ -72,7 +81,7 @@ export function StackedBarChart({
   return (
     <div style={{ width: "100%", height }}>
       <ResponsiveContainer>
-        <BarChart data={data} margin={{ top: 8, right: 12, left: 4, bottom: 4 }}>
+        <BarChart data={dataWithTotals} margin={{ top: 24, right: 12, left: 4, bottom: 4 }}>
           <CartesianGrid stroke={GRID_STROKE} vertical={false} />
           <XAxis dataKey={xKey} tick={AXIS_TICK} axisLine={false} tickLine={false} tickMargin={8} />
           <YAxis
@@ -93,17 +102,31 @@ export function StackedBarChart({
               ifOverflow="extendDomain"
             />
           )}
-          {withColor.map((s, i) => (
-            <Bar
-              key={s.key}
-              dataKey={s.key}
-              name={s.label}
-              stackId="x"
-              fill={s.color}
-              isAnimationActive={false}
-              radius={i === withColor.length - 1 ? [4, 4, 0, 0] : 0}
-            />
-          ))}
+          {withColor.map((s, i) => {
+            const isTop = i === withColor.length - 1;
+            return (
+              <Bar
+                key={s.key}
+                dataKey={s.key}
+                name={s.label}
+                stackId="x"
+                fill={s.color}
+                isAnimationActive={false}
+                radius={isTop ? [4, 4, 0, 0] : 0}
+              >
+                {isTop && (
+                  <LabelList
+                    dataKey="__total"
+                    position="top"
+                    formatter={(v: unknown) => formatCompact(Number(v ?? 0), format)}
+                    fill={LABEL_FILL}
+                    fontSize={11}
+                    fontWeight={600}
+                  />
+                )}
+              </Bar>
+            );
+          })}
         </BarChart>
       </ResponsiveContainer>
     </div>

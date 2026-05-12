@@ -2,6 +2,7 @@
 
 import {
   CartesianGrid,
+  LabelList,
   Line,
   LineChart,
   ReferenceArea,
@@ -10,7 +11,7 @@ import {
   XAxis,
   YAxis,
 } from "recharts";
-import { AXIS_TICK, GRID_STROKE, formatCompact, type ChartFormat } from "./chart-shared";
+import { AXIS_TICK, GRID_STROKE, LABEL_FILL, formatCompact, type ChartFormat } from "./chart-shared";
 import { ChartTooltip } from "./ChartTooltip";
 
 export interface MultiLineSeries {
@@ -28,6 +29,9 @@ export interface MultiLineChartProps {
   height?: number;
   /** First index in `data` that is forecast (Phase 2 styling). Omit in Phase 1. */
   forecastStartIndex?: number;
+  /** Draw per-point data labels above the line(s). Defaults true for a single
+   *  series and false for 2+ (avoids label overlap). */
+  showLabels?: boolean;
 }
 
 export function MultiLineChart({
@@ -37,7 +41,9 @@ export function MultiLineChart({
   leftFormat = "currency",
   height = 280,
   forecastStartIndex,
+  showLabels,
 }: MultiLineChartProps) {
+  const labelsOn = showLabels ?? series.length <= 1;
   const hasForecast =
     forecastStartIndex != null &&
     forecastStartIndex >= 0 &&
@@ -97,8 +103,38 @@ export function MultiLineChart({
               ifOverflow="extendDomain"
             />
           )}
-          {series.flatMap(s =>
-            hasForecast
+          {series.flatMap(s => {
+            const fmt = s.format ?? leftFormat;
+            const labelEl = labelsOn ? (
+              <LabelList
+                key={`${s.key}-lbl`}
+                dataKey={hasForecast ? `${s.key}__a` : s.key}
+                position="top"
+                formatter={(v: unknown) =>
+                  v == null || v === "" ? "" : formatCompact(Number(v), fmt)
+                }
+                fill={LABEL_FILL}
+                fontSize={11}
+                fontWeight={600}
+                offset={8}
+              />
+            ) : null;
+            const forecastLabelEl = labelsOn && hasForecast ? (
+              <LabelList
+                key={`${s.key}-flbl`}
+                dataKey={`${s.key}__f`}
+                position="top"
+                formatter={(v: unknown) =>
+                  v == null || v === "" ? "" : formatCompact(Number(v), fmt)
+                }
+                fill={LABEL_FILL}
+                fontSize={11}
+                fontWeight={600}
+                fontStyle="italic"
+                offset={8}
+              />
+            ) : null;
+            return hasForecast
               ? [
                   <Line
                     key={`${s.key}-actual`}
@@ -111,7 +147,9 @@ export function MultiLineChart({
                     activeDot={{ r: 4 }}
                     isAnimationActive={false}
                     connectNulls={false}
-                  />,
+                  >
+                    {labelEl}
+                  </Line>,
                   <Line
                     key={`${s.key}-forecast`}
                     type="monotone"
@@ -126,7 +164,9 @@ export function MultiLineChart({
                     isAnimationActive={false}
                     connectNulls={false}
                     legendType="none"
-                  />,
+                  >
+                    {forecastLabelEl}
+                  </Line>,
                 ]
               : [
                   <Line
@@ -139,9 +179,11 @@ export function MultiLineChart({
                     dot={{ r: 2.5, fill: s.color, strokeWidth: 0 }}
                     activeDot={{ r: 4 }}
                     isAnimationActive={false}
-                  />,
-                ],
-          )}
+                  >
+                    {labelEl}
+                  </Line>,
+                ];
+          })}
         </LineChart>
       </ResponsiveContainer>
     </div>

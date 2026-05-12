@@ -7,6 +7,7 @@ import { CardShell } from "@/components/ui/CardShell";
 import { WhatToDoNext, type Insight } from "@/components/insights/WhatToDoNext";
 import { StackedBarChart } from "@/components/charts/StackedBarChart";
 import { RankedBarChart } from "@/components/charts/RankedBarChart";
+import { MoverCard } from "@/components/insights/MoverCard";
 import { MonthOverMonthTable, type MoMRow } from "@/components/tables/MonthOverMonthTable";
 import { bootstrapPage, type PageSearchParams } from "@/lib/page-bootstrap";
 import { labelToIso } from "@/lib/period";
@@ -153,6 +154,25 @@ export default async function RevenuePage({ searchParams }: Props) {
     };
   }).filter(r => r.total > 0);
 
+  // ── Top movers (growers / decliners) ─────────────────────────────────────
+  const moverItems = clientRows
+    .map(c => ({ name: c.client, current: totalRev(c), prior: priorRev(c) }))
+    .filter(m => m.current > 0 || m.prior > 0)
+    .map(m => ({ ...m, delta: m.current - m.prior }));
+  const growers = [...moverItems]
+    .filter(m => m.delta > 0)
+    .sort((a, b) => b.delta - a.delta)
+    .slice(0, 6);
+  const decliners = [...moverItems]
+    .filter(m => m.delta < 0)
+    .sort((a, b) => a.delta - b.delta)
+    .slice(0, 6);
+  const moverMaxAbs = Math.max(1, ...moverItems.map(m => Math.abs(m.delta)));
+  const moverSubtitle =
+    hasPrior && boot.priorMonths.length
+      ? `Comparing current vs prior ${boot.priorMonths.length}-month window`
+      : "No prior period available";
+
   void selectedMonthLabel;
   return (
     <>
@@ -244,6 +264,23 @@ export default async function RevenuePage({ searchParams }: Props) {
               maxItems={10}
             />
           </CardShell>
+        </section>
+
+        <section className="mt-8 grid grid-cols-1 gap-4 lg:grid-cols-2">
+          <MoverCard
+            title="Top growers"
+            subtitle={moverSubtitle}
+            items={growers}
+            variant="grower"
+            max={moverMaxAbs}
+          />
+          <MoverCard
+            title="Top decliners"
+            subtitle={moverSubtitle}
+            items={decliners}
+            variant="decliner"
+            max={moverMaxAbs}
+          />
         </section>
 
         <section className="mt-8">

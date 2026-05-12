@@ -3,13 +3,14 @@
 import {
   Bar,
   BarChart,
+  LabelList,
   ResponsiveContainer,
   Tooltip,
   XAxis,
   YAxis,
   Cell,
 } from "recharts";
-import { AXIS_TICK, formatCompact, type ChartFormat } from "./chart-shared";
+import { AXIS_TICK, LABEL_FILL, formatCompact, type ChartFormat } from "./chart-shared";
 import { ChartTooltip } from "./ChartTooltip";
 
 export interface RankedBarItem {
@@ -42,7 +43,7 @@ export function RankedBarChart({
         <BarChart
           data={sorted}
           layout="vertical"
-          margin={{ top: 4, right: 16, left: 4, bottom: 4 }}
+          margin={{ top: 4, right: 64, left: 4, bottom: 4 }}
         >
           <XAxis
             type="number"
@@ -67,6 +68,14 @@ export function RankedBarChart({
             {sorted.map((d, i) => (
               <Cell key={i} fill={d.value < 0 ? negativeColor : color} />
             ))}
+            <LabelList
+              dataKey="value"
+              position="right"
+              formatter={(v: unknown) => formatCompact(Number(v ?? 0), format)}
+              fill={LABEL_FILL}
+              fontSize={11}
+              fontWeight={600}
+            />
           </Bar>
         </BarChart>
       </ResponsiveContainer>

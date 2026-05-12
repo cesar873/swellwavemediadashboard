@@ -15,7 +15,10 @@ export function ChartTooltip({ active, payload, label, format = "currency" }: To
     typeof format === "function" ? format : (v: number) => formatLong(v, format);
 
   return (
-    <div className="rounded-lg border border-[var(--card-border)] bg-[#0b1f33]/95 px-3 py-2 text-[12px] shadow-lg backdrop-blur">
+    <div
+      className="rounded-lg border border-white/15 px-3 py-2 text-[12px] shadow-lg backdrop-blur-md"
+      style={{ background: "rgba(28, 60, 92, 0.92)" }}
+    >
       {label && (
         <div className="mb-1 text-[10px] uppercase tracking-[0.08em] text-muted-foreground">
           {label}

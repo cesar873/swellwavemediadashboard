@@ -7,20 +7,34 @@ export const CHART_PALETTE = {
   amber:  "#f59e0b",
   purple: "#c084fc",
   yellow: "#fde047",
+  teal:   "#22d3ee",
+  pink:   "#f472b6",
 };
 
-export const PALETTE_BLUE  = ["#1390eb", "#3aa6f0", "#62bbf5", "#8ed0fa", "#bce3ff"];
-export const PALETTE_GREEN = ["#22c55e", "#4ad07a", "#72db96", "#9ae6b2", "#c3f0ce"];
-export const PALETTE_RED   = ["#ef4444", "#f06a6a", "#f29191", "#f5b7b7", "#f8dddd"];
-
+// Categorical palette per formatting.md §1.10: blue → green → purple → yellow → amber.
+// Used by default for any chart with > 1 distinct series.
 export const CATEGORICAL = [
   CHART_PALETTE.blue,
   CHART_PALETTE.green,
   CHART_PALETTE.purple,
   CHART_PALETTE.yellow,
   CHART_PALETTE.amber,
+  CHART_PALETTE.teal,
+  CHART_PALETTE.pink,
   CHART_PALETTE.red,
 ];
+
+// Stacked-bar palettes: ANCHOR colour first, then rotate through the categorical
+// palette so neighbouring series are visually distinct (not a single-hue gradient).
+// `paletteSort: blue|red|green` controls only the anchor; the rest of the stack
+// gets distinct hues so adjacent slices never read as the same colour.
+function rotateFrom(anchor: string): string[] {
+  const rest = CATEGORICAL.filter(c => c !== anchor);
+  return [anchor, ...rest];
+}
+export const PALETTE_BLUE  = rotateFrom(CHART_PALETTE.blue);
+export const PALETTE_GREEN = rotateFrom(CHART_PALETTE.green);
+export const PALETTE_RED   = rotateFrom(CHART_PALETTE.red);
 
 export type ChartFormat = "currency" | "percent" | "number";
 
@@ -60,3 +74,15 @@ export const AXIS_TICK = {
 };
 
 export const GRID_STROKE = "rgba(255,255,255,0.06)";
+
+// Data-label text fill — white, never black. Recharts defaults LabelList fill
+// to #666 which reads as black on dark cards; always override with this.
+export const LABEL_FILL = "rgba(255,255,255,0.92)";
+export const LABEL_FILL_SOFT = "rgba(255,255,255,0.7)";
+
+export const LABEL_STYLE = {
+  fill: LABEL_FILL,
+  fontSize: 11,
+  fontFamily: "var(--font-dm-sans), DM Sans, sans-serif",
+  fontWeight: 600 as const,
+};
