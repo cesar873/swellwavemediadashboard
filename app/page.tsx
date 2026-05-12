@@ -175,9 +175,15 @@ export default function Dashboard() {
   const [expTxnSearch, setExpTxnSearch] = useState('');
   const [expTxnCat,    setExpTxnCat]    = useState('');
 
-  const load = useCallback(async () => {
+  const load = useCallback(async (opts?: { bustCache?: boolean }) => {
     try {
-      const res = await fetch('/api/dashboard');
+      if (opts?.bustCache) {
+        // Force-purge Vercel/Next caches so the next fetch hits Google Sheets
+        await fetch('/api/refresh', { method: 'POST' }).catch(() => {});
+      }
+      const res = await fetch(opts?.bustCache ? `/api/dashboard?t=${Date.now()}` : '/api/dashboard', {
+        cache: opts?.bustCache ? 'no-store' : 'default',
+      });
       if (!res.ok) { const j = await res.json().catch(() => ({})); throw new Error(j.error || `HTTP ${res.status}`); }
       const d = await res.json();
       setData(d);
@@ -291,7 +297,7 @@ export default function Dashboard() {
             <select value={rEnd} onChange={e => setRangeEnd(Number(e.target.value))} style={{ background: 'rgba(255,255,255,0.04)', color: 'var(--text)', border: '1px solid var(--card-border)', borderRadius: 100, fontFamily: 'inherit', fontSize: 10, padding: '2px 8px', cursor: 'pointer' }}>
               {labels.map((l, i) => <option key={l} value={i}>{l}</option>)}
             </select>
-            <button onClick={load} title="Refresh" style={{ background: 'none', border: 'none', color: 'var(--muted)', cursor: 'pointer', fontSize: 14, padding: '0 2px', lineHeight: 1 }}>↻</button>
+            <button onClick={() => load({ bustCache: true })} title="Force-refresh from Google Sheets" style={{ background: 'none', border: 'none', color: 'var(--muted)', cursor: 'pointer', fontSize: 14, padding: '0 2px', lineHeight: 1 }}>↻</button>
           </div>
         </div>
       </div>
