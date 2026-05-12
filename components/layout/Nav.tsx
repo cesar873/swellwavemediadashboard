@@ -31,7 +31,7 @@ export function Nav() {
 
   return (
     <header className="sticky top-0 z-30">
-      <div className="border-b border-[var(--card-border)] bg-black/30 backdrop-blur supports-[backdrop-filter]:bg-black/20">
+      <div className="border-b border-[var(--card-border)] backdrop-blur" style={{ background: "rgba(0, 21, 40, 0.7)" }}>
         <div className="mx-auto flex max-w-[1400px] items-center px-9 py-5">
           <Link href={`/financials${suffix}`} className="agencfo-logo">
             <span className="client">SWELLWAVE MEDIA</span>

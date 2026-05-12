@@ -74,7 +74,7 @@ export function GlobalFiltersBar(props: GlobalFiltersBarProps) {
   }));
 
   return (
-    <div className="sticky top-[68px] z-20 border-b border-[var(--card-border)] bg-black/20 backdrop-blur">
+    <div className="sticky top-[68px] z-20 border-b border-[var(--card-border)] backdrop-blur" style={{ background: "rgba(0, 21, 40, 0.55)" }}>
       <div className="mx-auto flex max-w-[1400px] flex-wrap items-center gap-3 px-9 py-3">
         <span className="text-[10px] font-semibold uppercase tracking-[0.16em] text-[color:var(--muted)]">
           Filters

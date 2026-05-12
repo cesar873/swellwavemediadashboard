@@ -25,7 +25,7 @@
   --sticky-cell:        rgb(15, 36, 60);
   --sticky-cell-strong: rgb(22, 47, 75);
 
-  --background:           #000000;
+  --background:           #001528;
   --foreground:           #ffffff;
   --card-foreground:      #ffffff;
   --popover:              #0b1f33;
@@ -99,7 +99,10 @@
    Body + global styling — formatting.md §1.2
    ───────────────────────────────────────────────────────────────────────────── */
 body {
-  background: linear-gradient(180deg, #000000 0%, #001a2e 50%, #003b6f 100%);
+  /* No pure black anywhere — gradient stays in the navy family top to bottom
+   * so chart cards (which are translucent) never sit on a black surface.
+   * Deviates from formatting.md §1.2 intentionally per project preference. */
+  background: linear-gradient(180deg, #001528 0%, #002745 50%, #003b6f 100%);
   background-attachment: fixed;
   color: var(--text);
   font-family: var(--font-dm-sans), "DM Sans", system-ui, -apple-system, BlinkMacSystemFont,
