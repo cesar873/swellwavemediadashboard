@@ -261,10 +261,20 @@ export default function Dashboard() {
   const netMom = prev >= 0 ? mom(pl.netIncome[pidx], pl.netIncome[prev]) : { cls: 'flat', str: '—' };
   const mgPP   = prev >= 0 ? pp(pl.netMargin[pidx], pl.netMargin[prev]) : { cls: 'flat', str: '—' };
 
-  // Range filter (for MoM tables)
+  // Range filter — drives every chart, KPI and aggregation in the app
   const rStart = Math.max(0, Math.min(rangeStart, N - 1));
   const rEnd   = (rangeEnd >= 0 && rangeEnd < N) ? rangeEnd : N - 1;
   const rangeLabels = labels.slice(rStart, rEnd + 1);
+  const rangeLen   = rEnd - rStart + 1;
+  const rangeIsOne = rStart === rEnd;
+  const rangeLabel = rangeIsOne ? labels[rStart] : `${labels[rStart]} – ${labels[rEnd]}`;
+  const sumRange   = (arr: number[]) => arr.slice(rStart, rEnd + 1).reduce((a,b) => a + (b || 0), 0);
+  // Equivalent prior window of the same length, immediately before the current range
+  const priorStart = rStart - rangeLen;
+  const priorEnd   = rStart - 1;
+  const hasPrior   = priorStart >= 0 && priorEnd >= 0;
+  const sumPrior   = (arr: number[]) => hasPrior ? arr.slice(priorStart, priorEnd + 1).reduce((a,b) => a + (b || 0), 0) : 0;
+  const deltaLabel = hasPrior ? (rangeIsOne ? labels[priorEnd] : `prior ${rangeLen}mo`) : '—';
 
   // Unique service types for Revenue filter
   const serviceTypes = [...new Set(clients.map(c => c.service).filter(Boolean))];
@@ -315,30 +325,48 @@ export default function Dashboard() {
       <div className={`page${tab === 'financials' ? ' active' : ''}`}>
         <InsightsPanel insights={insights} period={currentPeriod} />
 
-        <div className="kpi-grid">
-          <div className="kpi">
-            <div className="label">Revenue · {currentPeriod}</div>
-            <div className="value">{fmt(pl.revenue[pidx])}</div>
-            <div className={`delta ${revMom.cls}`}>{revMom.cls === 'up' ? '▲' : revMom.cls === 'down' ? '▼' : '—'} {revMom.str} vs {labels[prev] ?? '—'}</div>
-          </div>
-          <div className="kpi green">
-            <div className="label">Net Income · {currentPeriod}</div>
-            <div className="value">{fmt(pl.netIncome[pidx])}</div>
-            <div className={`delta ${netMom.cls}`}>{netMom.cls === 'up' ? '▲' : netMom.cls === 'down' ? '▼' : '—'} {netMom.str} vs {labels[prev] ?? '—'}</div>
-          </div>
-          <div className="kpi">
-            <div className="label">Net Margin · {currentPeriod}</div>
-            <div className="value">{pct(pl.netMargin[pidx])}</div>
-            <div className={`delta ${mgPP.cls}`}>{mgPP.cls === 'up' ? '▲' : mgPP.cls === 'down' ? '▼' : '—'} {mgPP.str} vs {labels[prev] ?? '—'}</div>
-          </div>
-          <div className="kpi amber">
-            <div className="label">Gross Margin · {currentPeriod}</div>
-            <div className="value">{pct(pl.grossMargin[pidx])}</div>
-            <div className={`delta ${pp(pl.grossMargin[pidx], pl.grossMargin[prev] ?? 0).cls}`}>
-              {pp(pl.grossMargin[pidx], pl.grossMargin[prev] ?? 0).str} vs {labels[prev] ?? '—'}
+        {(() => {
+          const rev   = sumRange(pl.revenue);
+          const cogsS = sumRange(pl.cogs);
+          const opexS = sumRange(pl.opex);
+          const net   = sumRange(pl.netIncome);
+          const grossM = rev > 0 ? ((rev - cogsS) / rev) * 100 : 0;
+          const netM   = rev > 0 ? (net / rev) * 100 : 0;
+          const revP   = sumPrior(pl.revenue);
+          const netP   = sumPrior(pl.netIncome);
+          const cogsP  = sumPrior(pl.cogs);
+          const grossMP = revP > 0 ? ((revP - cogsP) / revP) * 100 : 0;
+          const netMP   = revP > 0 ? (netP / revP) * 100 : 0;
+          const dRev = hasPrior ? mom(rev, revP) : { cls: 'flat', str: '—' };
+          const dNet = hasPrior ? mom(net, netP) : { cls: 'flat', str: '—' };
+          const dGM  = hasPrior ? pp(grossM, grossMP) : { cls: 'flat', str: '—' };
+          const dNM  = hasPrior ? pp(netM, netMP) : { cls: 'flat', str: '—' };
+          const arrow = (c: string) => c === 'up' ? '▲' : c === 'down' ? '▼' : '—';
+          return (
+            <div className="kpi-grid">
+              <div className="kpi">
+                <div className="label">Revenue · {rangeLabel}</div>
+                <div className="value">{fmt(rev)}</div>
+                <div className={`delta ${dRev.cls}`}>{arrow(dRev.cls)} {dRev.str} vs {deltaLabel}</div>
+              </div>
+              <div className="kpi green">
+                <div className="label">Net Income · {rangeLabel}</div>
+                <div className="value">{fmt(net)}</div>
+                <div className={`delta ${dNet.cls}`}>{arrow(dNet.cls)} {dNet.str} vs {deltaLabel}</div>
+              </div>
+              <div className="kpi">
+                <div className="label">Net Margin · {rangeLabel}</div>
+                <div className="value">{pct(netM)}</div>
+                <div className={`delta ${dNM.cls}`}>{arrow(dNM.cls)} {dNM.str} vs {deltaLabel}</div>
+              </div>
+              <div className="kpi amber">
+                <div className="label">Gross Margin · {rangeLabel}</div>
+                <div className="value">{pct(grossM)}</div>
+                <div className={`delta ${dGM.cls}`}>{arrow(dGM.cls)} {dGM.str} vs {deltaLabel}</div>
+              </div>
             </div>
-          </div>
-        </div>
+          );
+        })()}
 
         <div className="grid-2 gap">
           <div className="panel">
@@ -443,9 +471,19 @@ export default function Dashboard() {
         {/* ─── Budget vs Actuals ─────────────────────────────────────── */}
         {(() => {
           if (!budget.length) return null;
-          const currentMonthKey = labels[pidx]?.trim().toLowerCase() ?? '';
-          const rowsThisMonth = budget.filter(b => b.month.trim().toLowerCase() === currentMonthKey);
-          if (!rowsThisMonth.length) return null;
+          // Sum budget + actual across every month inside the selected range
+          const rangeMonthKeys = new Set(rangeLabels.map(l => l.trim().toLowerCase()));
+          const rowsInRange = budget.filter(b => rangeMonthKeys.has(b.month.trim().toLowerCase()));
+          if (!rowsInRange.length) return null;
+          // Collapse multi-month rows for the same category|group into a single aggregate
+          const aggMap = new Map<string, { category: string; group: string; budget: number; actual: number; isTotal: boolean }>();
+          for (const b of rowsInRange) {
+            const key = b.group + '||' + b.category;
+            const e = aggMap.get(key);
+            if (e) { e.budget += b.budget; e.actual += b.actual; }
+            else aggMap.set(key, { category: b.category, group: b.group, budget: b.budget, actual: b.actual, isTotal: b.isTotal });
+          }
+          const rowsThisMonth = [...aggMap.values()].map(r => ({ ...r, month: rangeLabel, varianceDollar: r.budget - r.actual, variancePct: 0 }));
 
           // Prefer the explicit "Total X" rows the sheet already provides — those are
           // the canonical totals. Fall back to summing line items if the total row is
@@ -509,8 +547,8 @@ export default function Dashboard() {
 
           return (
             <div className="panel gap">
-              <h2>Budget vs Actuals · {labels[pidx]}</h2>
-              <div className="sub">Variance analysis by category — change the period selector at the top to drill into another month</div>
+              <h2>Budget vs Actuals · {rangeLabel}</h2>
+              <div className="sub">Variance analysis by category — aggregated across the selected range</div>
 
               <div className="metrics-strip" style={{ marginTop: 8 }}>
                 <Card label="Revenue"            b={totRev.budget}  a={totRev.actual}  positiveIsGood />
@@ -600,42 +638,63 @@ export default function Dashboard() {
       <div className={`page${tab === 'revenue' ? ' active' : ''}`}>
         <InsightsPanel insights={insights.filter(i => i.type !== 'warn' || i.text.toLowerCase().includes('revenue'))} period={currentPeriod} pillLabel="Revenue Insights" />
 
-        <div className="metrics-strip">
-          <div className="metric-card"><div className="ml">YTD Revenue</div><div className="mv">{fmt(ytdRev)}</div><div className="ms">{labels[0]} – {labels[pidx]}</div></div>
-          <div className="metric-card"><div className="ml">Avg Monthly</div><div className="mv">{fmt(ytdRev / (pidx + 1))}</div><div className="ms">Per month YTD</div></div>
-          <div className="metric-card"><div className="ml">Best Month</div><div className="mv">{fmt(Math.max(...pl.revenue))}</div><div className="ms">{labels[pl.revenue.indexOf(Math.max(...pl.revenue))]}</div></div>
-          <div className="metric-card"><div className="ml">MoM Growth</div><div className="mv" style={{color: revMom.cls === 'up' ? 'var(--green)' : 'var(--red)'}}>{revMom.str}</div><div className="ms">{labels[prev] ?? '—'} → {currentPeriod}</div></div>
-        </div>
-
-        <div className="kpi-grid">
-          <div className="kpi">
-            <div className="label">Total Revenue · {currentPeriod}</div>
-            <div className="value">{fmt(pl.revenue[pidx])}</div>
-            <div className={`delta ${revMom.cls}`}>{revMom.cls === 'up' ? '▲' : '▼'} {revMom.str} vs {labels[prev] ?? '—'}</div>
-          </div>
-          <div className="kpi amber">
-            <div className="label">Active Clients</div>
-            <div className="value">{uniqueClients.filter(c => c.status?.toLowerCase().includes('active')).length}</div>
-            <div className="delta">Generating revenue</div>
-          </div>
-          <div className="kpi">
-            <div className="label">Active Revenue Lines</div>
-            <div className="value">{Object.keys(clientMonthly).filter(k => (clientMonthly[k][pidx] ?? 0) > 0).length}</div>
-            <div className="delta">Service lines billed this period</div>
-          </div>
-          <div className="kpi">
-            <div className="label">Top Client Concentration</div>
-            <div className="value" style={{ color: 'var(--amber)' }}>
-              {(() => {
-                const byClient = clients.reduce<Record<string, number>>((acc, c) => { acc[c.client] = (acc[c.client] ?? 0) + (c.monthlyRevenue[pidx] ?? 0); return acc; }, {});
-                const total = Object.values(byClient).reduce((a, b) => a + b, 0);
-                const top = Math.max(...Object.values(byClient));
-                return total > 0 ? pct((top / total) * 100) : '—';
-              })()}
+        {(() => {
+          const rev   = sumRange(pl.revenue);
+          const avgM  = rev / rangeLen;
+          const inRangeRev = pl.revenue.slice(rStart, rEnd + 1);
+          const bestIdx    = inRangeRev.indexOf(Math.max(...inRangeRev));
+          const revP   = sumPrior(pl.revenue);
+          const dRev   = hasPrior ? mom(rev, revP) : { cls: 'flat', str: '—' };
+          return (
+            <div className="metrics-strip">
+              <div className="metric-card"><div className="ml">Range Revenue</div><div className="mv">{fmt(rev)}</div><div className="ms">{rangeLabel}</div></div>
+              <div className="metric-card"><div className="ml">Avg Monthly</div><div className="mv">{fmt(avgM)}</div><div className="ms">Across {rangeLen} {rangeLen === 1 ? 'month' : 'months'}</div></div>
+              <div className="metric-card"><div className="ml">Best Month</div><div className="mv">{fmt(inRangeRev[bestIdx] ?? 0)}</div><div className="ms">{rangeLabels[bestIdx] ?? '—'}</div></div>
+              <div className="metric-card"><div className="ml">vs Prior {rangeLen}mo</div><div className="mv" style={{color: dRev.cls === 'up' ? 'var(--green)' : dRev.cls === 'down' ? 'var(--red)' : 'var(--muted)'}}>{dRev.str}</div><div className="ms">vs {deltaLabel}</div></div>
             </div>
-            <div className="delta" style={{ color: 'var(--amber)' }}>Single-client risk</div>
-          </div>
-        </div>
+          );
+        })()}
+
+        {(() => {
+          const rev = sumRange(pl.revenue);
+          const revP = sumPrior(pl.revenue);
+          const dRev = hasPrior ? mom(rev, revP) : { cls: 'flat', str: '—' };
+          // Active revenue lines — any service line with non-zero rev in the range
+          const activeLines = Object.values(clientMonthly).filter(arr => arr.slice(rStart, rEnd+1).some(v => v > 0)).length;
+          // Concentration based on range totals
+          const byClient = clients.reduce<Record<string, number>>((acc, c) => {
+            acc[c.client] = (acc[c.client] ?? 0) + c.monthlyRevenue.slice(rStart, rEnd+1).reduce((a,b)=>a+(b||0),0);
+            return acc;
+          }, {});
+          const totalRev = Object.values(byClient).reduce((a,b)=>a+b, 0);
+          const sorted   = Object.entries(byClient).sort((a,b) => b[1] - a[1]);
+          const topShare = totalRev > 0 && sorted.length ? (sorted[0][1] / totalRev) * 100 : 0;
+          const arrow = (c: string) => c === 'up' ? '▲' : c === 'down' ? '▼' : '—';
+          return (
+            <div className="kpi-grid">
+              <div className="kpi">
+                <div className="label">Total Revenue · {rangeLabel}</div>
+                <div className="value">{fmt(rev)}</div>
+                <div className={`delta ${dRev.cls}`}>{arrow(dRev.cls)} {dRev.str} vs {deltaLabel}</div>
+              </div>
+              <div className="kpi amber">
+                <div className="label">Active Clients</div>
+                <div className="value">{uniqueClients.filter(c => c.status?.toLowerCase().includes('active')).length}</div>
+                <div className="delta">Generating revenue</div>
+              </div>
+              <div className="kpi">
+                <div className="label">Active Revenue Lines</div>
+                <div className="value">{activeLines}</div>
+                <div className="delta">Service lines billed in range</div>
+              </div>
+              <div className="kpi">
+                <div className="label">Top Client Concentration</div>
+                <div className="value" style={{ color: 'var(--amber)' }}>{topShare > 0 ? pct(topShare) : '—'}</div>
+                <div className="delta" style={{ color: 'var(--amber)' }}>{sorted[0]?.[0] ?? 'Single-client risk'}</div>
+              </div>
+            </div>
+          );
+        })()}
 
         <div className="grid-21 gap">
           <div className="panel">
@@ -808,28 +867,40 @@ export default function Dashboard() {
       <div className={`page${tab === 'expenses' ? ' active' : ''}`}>
         <InsightsPanel insights={insights.filter(i => i.text.toLowerCase().includes('cogs') || i.text.toLowerCase().includes('opex') || i.text.toLowerCase().includes('margin') || i.text.toLowerCase().includes('cost'))} period={currentPeriod} pillLabel="Expense Insights" />
 
-        <div className="kpi-grid">
-          <div className="kpi">
-            <div className="label">Total COGS · {currentPeriod}</div>
-            <div className="value">{fmt(pl.cogs[pidx])}</div>
-            <div className={`delta ${mom(pl.cogs[pidx], pl.cogs[prev] ?? 0).cls}`}>{mom(pl.cogs[pidx], pl.cogs[prev] ?? 0).str} vs prior</div>
-          </div>
-          <div className="kpi amber">
-            <div className="label">Total OpEx · {currentPeriod}</div>
-            <div className="value">{fmt(pl.opex[pidx])}</div>
-            <div className={`delta ${mom(pl.opex[pidx], pl.opex[prev] ?? 0).cls}`}>{mom(pl.opex[pidx], pl.opex[prev] ?? 0).str} vs prior</div>
-          </div>
-          <div className="kpi">
-            <div className="label">COGS % of Revenue</div>
-            <div className="value">{pct(pl.cogs[pidx] / pl.revenue[pidx] * 100)}</div>
-            <div className="delta">Influencer-heavy</div>
-          </div>
-          <div className="kpi">
-            <div className="label">YTD Total Spend</div>
-            <div className="value">{fmt(ytdCogs + ytdOpex)}</div>
-            <div className="delta">COGS + OpEx</div>
-          </div>
-        </div>
+        {(() => {
+          const cogsS = sumRange(pl.cogs);
+          const opexS = sumRange(pl.opex);
+          const revS  = sumRange(pl.revenue);
+          const cogsP = sumPrior(pl.cogs);
+          const opexP = sumPrior(pl.opex);
+          const dCogs = hasPrior ? mom(cogsS, cogsP) : { cls: 'flat', str: '—' };
+          const dOpex = hasPrior ? mom(opexS, opexP) : { cls: 'flat', str: '—' };
+          const arrow = (c: string) => c === 'up' ? '▲' : c === 'down' ? '▼' : '—';
+          return (
+            <div className="kpi-grid">
+              <div className="kpi">
+                <div className="label">Total COGS · {rangeLabel}</div>
+                <div className="value">{fmt(cogsS)}</div>
+                <div className={`delta ${dCogs.cls}`}>{arrow(dCogs.cls)} {dCogs.str} vs {deltaLabel}</div>
+              </div>
+              <div className="kpi amber">
+                <div className="label">Total OpEx · {rangeLabel}</div>
+                <div className="value">{fmt(opexS)}</div>
+                <div className={`delta ${dOpex.cls}`}>{arrow(dOpex.cls)} {dOpex.str} vs {deltaLabel}</div>
+              </div>
+              <div className="kpi">
+                <div className="label">COGS % of Revenue</div>
+                <div className="value">{revS > 0 ? pct((cogsS / revS) * 100) : '—'}</div>
+                <div className="delta">Across {rangeLen} {rangeLen === 1 ? 'month' : 'months'}</div>
+              </div>
+              <div className="kpi">
+                <div className="label">Total Spend · {rangeLabel}</div>
+                <div className="value">{fmt(cogsS + opexS)}</div>
+                <div className="delta">COGS + OpEx</div>
+              </div>
+            </div>
+          );
+        })()}
 
         <div className="grid-21 gap">
           <div className="panel">

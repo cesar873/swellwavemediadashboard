@@ -110,7 +110,7 @@ export function MarginChart({ labels, values, color, min, max }: {
       plugins: {
         legend: { display: false },
         datalabels: {
-          display: true, color, font: { size: 9, weight: 500 as const },
+          display: true, color: 'rgba(255,255,255,0.50)', font: { size: 9, weight: 500 as const },
           formatter: (v: number) => fmtPct(v), align: 'top', offset: 6,
         },
       },
@@ -142,8 +142,7 @@ export function DualMarginChart({ labels, gross, operating }: {
         legend: { position: 'top', labels: { boxWidth: 10, boxHeight: 10, padding: 14 } },
         datalabels: {
           display: true, align: 'top', offset: 6, font: { size: 9, weight: 500 as const },
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          color: (ctx: any) => ctx.datasetIndex === 0 ? 'rgba(19,144,235,0.85)' : 'rgba(34,197,94,0.85)',
+          color: 'rgba(255,255,255,0.50)',
           formatter: (v: number) => v.toFixed(1) + '%',
         },
       },
@@ -333,8 +332,7 @@ export function LabeledLineChart({ labels, datasets }: {
           align: 'top',
           offset: 6,
           font: { size: 9, weight: 500 as const },
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          color: (ctx: any) => datasets[ctx.datasetIndex]?.color ?? '#fff',
+          color: 'rgba(255,255,255,0.50)',
           formatter: (v: number) => fmt(v),
         },
         tooltip: {
