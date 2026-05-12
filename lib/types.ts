@@ -66,6 +66,17 @@ export interface ServiceCapacity {
   totalHours: number;
 }
 
+export interface Transaction {
+  date: string;            // ISO yyyy-mm-dd or formatted string
+  id: string;
+  kind: 'Revenue' | 'Expense';
+  accountCode: string;
+  category: string;
+  description: string;
+  vendor: string;
+  amount: number;          // always positive
+}
+
 export interface DashboardData {
   lastUpdated: string;
   pl: PLData;
@@ -75,4 +86,5 @@ export interface DashboardData {
   clientProfits: ClientProfit[];
   teamMembers: TeamMember[];
   serviceCapacity: ServiceCapacity[];
+  transactions: Transaction[];
 }

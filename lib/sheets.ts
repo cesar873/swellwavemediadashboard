@@ -1,5 +1,5 @@
 import { google } from 'googleapis';
-import type { DashboardData, PLData, ExpenseCategory, COGSCategory, ClientRow, ClientProfit, TeamMember, ServiceCapacity } from './types';
+import type { DashboardData, PLData, ExpenseCategory, COGSCategory, ClientRow, ClientProfit, TeamMember, ServiceCapacity, Transaction } from './types';
 
 const SPREADSHEET_ID = '1JkaZ1qfrWqEwmSmG-sjdgQ0a3ZaQHtD5zl_RgehqdeY';
 
@@ -309,6 +309,45 @@ export async function fetchDashboardData(): Promise<DashboardData> {
     }
   }
 
+  // ── Transactions ──────────────────────────────────────────────────────────
+  const txnsGrid = allGrids.find(g => g.title.toLowerCase() === 'transactions')?.grid
+                ?? allGrids.find(g => findRow(g.grid, 'Transaction ID', 'Category', 'Amount'))?.grid
+                ?? [];
+  const transactions: Transaction[] = [];
+  if (txnsGrid.length > 1) {
+    const hdr = txnsGrid[0];
+    const col = (key: string) => hdr.findIndex(c => parseStr(c).toLowerCase() === key.toLowerCase());
+    const colLike = (key: string) => hdr.findIndex(c => parseStr(c).toLowerCase().includes(key.toLowerCase()));
+    const iDate = col('Date');
+    const iId   = colLike('Transaction ID');
+    const iAcct = colLike('Account Code');
+    const iCat  = col('Category');
+    const iDesc = col('Description');
+    const iVend = colLike('Client / Vendor');
+    const iAmt  = col('Amount');
+
+    for (let r = 1; r < txnsGrid.length; r++) {
+      const row = txnsGrid[r];
+      const date = iDate >= 0 ? parseStr(row[iDate]) : '';
+      const category = iCat >= 0 ? parseStr(row[iCat]) : '';
+      if (!date || !category) continue;
+      const amount = parseNum(row[iAmt]);
+      if (!amount) continue;
+      const accountCode = iAcct >= 0 ? parseStr(row[iAcct]) : '';
+      const isRevenue = /\brevenue\b|\bincome\b/i.test(category) || /^4/.test(accountCode);
+      transactions.push({
+        date,
+        id:          iId   >= 0 ? parseStr(row[iId])   : '',
+        kind:        isRevenue ? 'Revenue' : 'Expense',
+        accountCode,
+        category,
+        description: iDesc >= 0 ? parseStr(row[iDesc]) : '',
+        vendor:      iVend >= 0 ? parseStr(row[iVend]) : '',
+        amount:      Math.abs(amount),
+      });
+    }
+  }
+
   return {
     lastUpdated: new Date().toISOString(),
     pl,
@@ -318,5 +357,6 @@ export async function fetchDashboardData(): Promise<DashboardData> {
     clientProfits,
     teamMembers,
     serviceCapacity,
+    transactions,
   };
 }

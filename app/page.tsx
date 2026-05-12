@@ -31,6 +31,12 @@ import {
 // ── Helpers ────────────────────────────────────────────────────────────────────
 const pct   = (v: number) => (isFinite(v) ? v.toFixed(1) : '0.0') + '%';
 const fmtK  = (v: number) => '$' + (Math.abs(v) >= 1000 ? (v / 1000).toFixed(1) + 'K' : v.toFixed(0));
+const fmtDate = (s: string) => {
+  if (!s) return '—';
+  const d = new Date(s);
+  if (isNaN(+d)) return s;
+  return d.toLocaleDateString('en-US', { month: 'short', day: '2-digit', year: 'numeric' });
+};
 const pp    = (a: number, b: number) => { const d = a - b; return { d, cls: d >= 0 ? 'up' : 'down', str: (d >= 0 ? '+' : '') + d.toFixed(1) + 'pp' }; };
 const mom   = (a: number, b: number) => { if (!b) return { d: 0, cls: 'flat', str: '—' }; const d = ((a - b) / Math.abs(b)) * 100; return { d, cls: d >= 0 ? 'up' : 'down', str: (d >= 0 ? '+' : '') + d.toFixed(1) + '%' }; };
 
@@ -156,6 +162,10 @@ export default function Dashboard() {
   const [momRevType,   setMomRevType]   = useState('');
   const [momExpSearch, setMomExpSearch] = useState('');
   const [momExpCat,    setMomExpCat]    = useState('');
+  const [revTxnSearch, setRevTxnSearch] = useState('');
+  const [revTxnCat,    setRevTxnCat]    = useState('');
+  const [expTxnSearch, setExpTxnSearch] = useState('');
+  const [expTxnCat,    setExpTxnCat]    = useState('');
 
   const load = useCallback(async () => {
     try {
@@ -194,7 +204,7 @@ export default function Dashboard() {
     </>
   );
 
-  const { pl, expenseCategories, cogsCategories, clients, clientProfits, teamMembers, serviceCapacity } = data!;
+  const { pl, expenseCategories, cogsCategories, clients, clientProfits, teamMembers, serviceCapacity, transactions = [] } = data!;
   const N = pl.months.length;
   const pidx = periodIdx >= 0 && periodIdx < N ? periodIdx : N - 1;
   const prev = pidx - 1;
@@ -558,6 +568,58 @@ export default function Dashboard() {
             })()}
           </div>
         </div>
+
+        {/* Client Payments — transaction-level */}
+        <div className="panel gap">
+          <h2>Client Payments</h2>
+          <div className="sub">All revenue transactions{labels.length ? ` — ${labels[0]} to ${labels[N-1]}` : ''}</div>
+          {(() => {
+            const revTxns = transactions.filter(t => t.kind === 'Revenue');
+            const cats = [...new Set(revTxns.map(t => t.category))].sort();
+            const filtered = revTxns
+              .filter(t => !revTxnCat    || t.category === revTxnCat)
+              .filter(t => !revTxnSearch || (t.vendor + ' ' + t.description + ' ' + t.category).toLowerCase().includes(revTxnSearch.toLowerCase()))
+              .sort((a, b) => (b.date || '').localeCompare(a.date || ''));
+            const total = filtered.reduce((a, t) => a + t.amount, 0);
+            return (
+              <>
+                <div className="filter-bar">
+                  <span className="filter-label">Type</span>
+                  <select value={revTxnCat} onChange={e => setRevTxnCat(e.target.value)}>
+                    <option value="">All Types</option>
+                    {cats.map(c => <option key={c} value={c}>{c}</option>)}
+                  </select>
+                  <input type="text" placeholder="Search client / vendor…" value={revTxnSearch} onChange={e => setRevTxnSearch(e.target.value)} style={{minWidth:220}} />
+                  <span className="tbl-count">{filtered.length} transactions · {fmtFull(total)}</span>
+                </div>
+                <div className="tbl-scroll tbl-scroll-y" style={{maxHeight:440}}>
+                  <table>
+                    <thead>
+                      <tr>
+                        <th style={{minWidth:110}}>Date</th>
+                        <th>Client / Name</th>
+                        <th style={{minWidth:140}}>Type</th>
+                        <th className="num">Amount</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {filtered.length === 0 ? (
+                        <tr><td colSpan={4} style={{color:'var(--muted)', padding:16, textAlign:'center'}}>No matching transactions</td></tr>
+                      ) : filtered.map((t, i) => (
+                        <tr key={i}>
+                          <td style={{color:'var(--muted)', fontSize:12}}>{fmtDate(t.date)}</td>
+                          <td><strong>{t.vendor || t.description || '—'}</strong></td>
+                          <td><span className="pill neutral" style={{textTransform:'none', letterSpacing:0}}>{t.category}</span></td>
+                          <td className="num" style={{color:'var(--blue)', fontWeight:700}}>{fmtFull(t.amount)}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </>
+            );
+          })()}
+        </div>
       </div>
 
       {/* ══════════════════════════════════════════════════════════════
@@ -733,6 +795,58 @@ export default function Dashboard() {
               );
             })()}
           </div>
+        </div>
+
+        {/* Expense Transactions — transaction-level */}
+        <div className="panel gap">
+          <h2>Expense Transactions</h2>
+          <div className="sub">Full ledger{labels.length ? ` — ${labels[0]} to ${labels[N-1]}` : ''}</div>
+          {(() => {
+            const expTxns = transactions.filter(t => t.kind === 'Expense');
+            const cats = [...new Set(expTxns.map(t => t.category))].sort();
+            const filtered = expTxns
+              .filter(t => !expTxnCat    || t.category === expTxnCat)
+              .filter(t => !expTxnSearch || (t.vendor + ' ' + t.description + ' ' + t.category).toLowerCase().includes(expTxnSearch.toLowerCase()))
+              .sort((a, b) => (b.date || '').localeCompare(a.date || ''));
+            const total = filtered.reduce((a, t) => a + t.amount, 0);
+            return (
+              <>
+                <div className="filter-bar">
+                  <span className="filter-label">Category</span>
+                  <select value={expTxnCat} onChange={e => setExpTxnCat(e.target.value)}>
+                    <option value="">All Categories</option>
+                    {cats.map(c => <option key={c} value={c}>{c}</option>)}
+                  </select>
+                  <input type="text" placeholder="Search vendor / description…" value={expTxnSearch} onChange={e => setExpTxnSearch(e.target.value)} style={{minWidth:220}} />
+                  <span className="tbl-count">{filtered.length} transactions · {fmtFull(total)}</span>
+                </div>
+                <div className="tbl-scroll tbl-scroll-y" style={{maxHeight:440}}>
+                  <table>
+                    <thead>
+                      <tr>
+                        <th style={{minWidth:110}}>Date</th>
+                        <th>Vendor / Description</th>
+                        <th style={{minWidth:160}}>Category</th>
+                        <th className="num">Amount</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {filtered.length === 0 ? (
+                        <tr><td colSpan={4} style={{color:'var(--muted)', padding:16, textAlign:'center'}}>No matching transactions</td></tr>
+                      ) : filtered.map((t, i) => (
+                        <tr key={i}>
+                          <td style={{color:'var(--muted)', fontSize:12}}>{fmtDate(t.date)}</td>
+                          <td><strong>{t.vendor || '—'}</strong>{t.description && t.description !== t.vendor ? <div style={{fontSize:11, color:'var(--muted)', marginTop:2}}>{t.description}</div> : null}</td>
+                          <td><span className="pill warn" style={{textTransform:'none', letterSpacing:0}}>{t.category}</span></td>
+                          <td className="num" style={{color:'var(--red)', fontWeight:700}}>{fmtFull(t.amount)}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </>
+            );
+          })()}
         </div>
       </div>
 
