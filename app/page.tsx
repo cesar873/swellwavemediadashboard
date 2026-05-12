@@ -432,8 +432,12 @@ export default function Dashboard() {
           const rowsThisMonth = budget.filter(b => b.month.trim().toLowerCase() === currentMonthKey);
           if (!rowsThisMonth.length) return null;
 
-          // Aggregate by group (excluding "Total X" subtotals)
+          // Prefer the explicit "Total X" rows the sheet already provides — those are
+          // the canonical totals. Fall back to summing line items if the total row is
+          // missing for some reason.
           const agg = (g: string) => {
+            const totalRow = rowsThisMonth.find(b => b.group === g && b.isTotal);
+            if (totalRow) return { budget: totalRow.budget, actual: totalRow.actual };
             const rs = rowsThisMonth.filter(b => b.group === g && !b.isTotal);
             return {
               budget: rs.reduce((a, b) => a + b.budget, 0),
@@ -443,8 +447,11 @@ export default function Dashboard() {
           const totRev  = agg('Revenue');
           const totCogs = agg('COGS');
           const totOpex = agg('Expenses');
-          const netActual = totRev.actual - totCogs.actual - totOpex.actual;
-          const netBudget = totRev.budget - totCogs.budget - totOpex.budget;
+
+          // Net Income: prefer the explicit Metrics row if the sheet has one
+          const netRow = rowsThisMonth.find(b => b.group === 'Metrics' && /net income/i.test(b.category));
+          const netActual = netRow ? netRow.actual : totRev.actual - totCogs.actual - totOpex.actual;
+          const netBudget = netRow ? netRow.budget : totRev.budget - totCogs.budget - totOpex.budget;
 
           const Card = ({ label, b, a, positiveIsGood }: { label: string; b: number; a: number; positiveIsGood: boolean }) => {
             const v = a - b;
@@ -513,8 +520,9 @@ export default function Dashboard() {
                     {groupOrder.map(g => {
                       const detail = rowsThisMonth.filter(b => b.group === g.name && !b.isTotal);
                       if (!detail.length) return null;
-                      const subB = detail.reduce((a, b) => a + b.budget, 0);
-                      const subA = detail.reduce((a, b) => a + b.actual, 0);
+                      const totalRow = rowsThisMonth.find(b => b.group === g.name && b.isTotal);
+                      const subB = totalRow ? totalRow.budget : detail.reduce((a, b) => a + b.budget, 0);
+                      const subA = totalRow ? totalRow.actual : detail.reduce((a, b) => a + b.actual, 0);
                       const subV = subA - subB;
                       const subVPct = subB !== 0 ? (subV / Math.abs(subB)) * 100 : 0;
                       const subGood = g.positiveIsGood ? subV >= 0 : subV <= 0;
