@@ -34,7 +34,22 @@ function rotateFrom(anchor: string): string[] {
 }
 export const PALETTE_BLUE  = rotateFrom(CHART_PALETTE.blue);
 export const PALETTE_GREEN = rotateFrom(CHART_PALETTE.green);
-export const PALETTE_RED   = rotateFrom(CHART_PALETTE.red);
+
+// PALETTE_RED is used by the Expenses tab. The full categorical rotation lit
+// up with bright yellow / cyan / pink which read as harsh on the dark navy
+// background, so use a muted cost-y palette: anchor red, then desaturated
+// teals / golds / sages / dusty hues. Still 8 distinct colours; nothing pure
+// fluorescent.
+export const PALETTE_RED = [
+  CHART_PALETTE.red, // #ef4444 — anchor (biggest cost at base)
+  "#5b8dbe", // muted blue / slate
+  "#7aa37e", // sage green
+  "#9078b3", // muted purple
+  "#caa747", // muted gold (was bright yellow)
+  "#c4793d", // burnt orange (was bright amber)
+  "#5e9aa3", // slate teal (was bright cyan)
+  "#b07a8e", // dusty rose (was bright pink)
+];
 
 export type ChartFormat = "currency" | "percent" | "number";
 
