@@ -10,8 +10,10 @@ import { StackedBarChart } from "@/components/charts/StackedBarChart";
 import { VerticalBarChart } from "@/components/charts/VerticalBarChart";
 import { RankedBarChart } from "@/components/charts/RankedBarChart";
 import { MonthOverMonthTable, type MoMRow } from "@/components/tables/MonthOverMonthTable";
+import { ScopeToggle, type Scope } from "@/components/layout/ScopeToggle";
+import { CategoryMultiSelect } from "@/components/layout/CategoryMultiSelect";
 import { bootstrapPage, sumAt, deltaPct, type PageSearchParams } from "@/lib/page-bootstrap";
-import { labelToIso } from "@/lib/period";
+import { labelToIso, isoToLabel } from "@/lib/period";
 import { formatCurrency, formatPercent, type Tone } from "@/lib/utils";
 import type { Metadata } from "next";
 
@@ -20,7 +22,7 @@ export const revalidate = 300;
 export const dynamic = "force-dynamic";
 
 interface Props {
-  searchParams: Promise<PageSearchParams>;
+  searchParams: Promise<PageSearchParams & { scope?: string; cats?: string }>;
 }
 
 export default async function ExpensesPage({ searchParams }: Props) {
@@ -138,44 +140,96 @@ export default async function ExpensesPage({ searchParams }: Props) {
     }
   }
 
-  // ── Primary chart: by category (COGS + OpEx) stacked by month ───────────
+  // ── Scope toggle (Month / Range / YTD) ───────────────────────────────────
+  const scopeRaw = (sp.scope ?? "range").toLowerCase();
+  const scope: Scope = scopeRaw === "month" || scopeRaw === "ytd" ? (scopeRaw as Scope) : "range";
+
+  // YTD = same year as latestActualIso, from Jan to latestActualIso (inclusive).
+  const ytdIndices: number[] = (() => {
+    if (!latestActualIso) return [];
+    const year = latestActualIso.slice(0, 4);
+    return monthsIso
+      .map((iso, i) => (iso.startsWith(year) && iso <= latestActualIso ? i : -1))
+      .filter(i => i >= 0);
+  })();
+
+  const effectiveIndices =
+    scope === "month" ? (selectedMonthIndex >= 0 ? [selectedMonthIndex] : [])
+    : scope === "ytd" ? ytdIndices
+    : selectedIndices;
+
+  const effectiveMonths = effectiveIndices.map(i => monthsIso[i]).filter(Boolean);
+  const effectiveLabel =
+    scope === "month" ? `${selectedMonthLabel}`
+    : scope === "ytd" && ytdIndices.length
+      ? `YTD · ${isoToLabel(monthsIso[ytdIndices[0]])} → ${isoToLabel(monthsIso[ytdIndices[ytdIndices.length - 1]])} (${ytdIndices.length} mo)`
+    : `Range · ${periodLabel}`;
+
+  const ytdLabel = ytdIndices.length
+    ? `${isoToLabel(monthsIso[ytdIndices[0]])} → ${isoToLabel(monthsIso[ytdIndices[ytdIndices.length - 1]])} (${ytdIndices.length} mo)`
+    : "no actuals available";
+
+  // ── Categories: every COGS + OpEx category with any data, normalized ─────
   const allCategories = [
-    ...data.cogsCategories.map(c => ({ name: c.name.replace("- Service Delivery", "").trim(), values: c.values })),
-    ...data.expenseCategories.filter(e => e.values.some(v => v > 0)).map(e => ({ name: e.name.replace(" Expenses", "").replace("and other ", ""), values: e.values })),
+    ...data.cogsCategories.map(c => ({ name: c.name.replace("- Service Delivery", "").trim(), values: c.values, type: "COGS" as const })),
+    ...data.expenseCategories.filter(e => e.values.some(v => v > 0)).map(e => ({ name: e.name.replace(" Expenses", "").replace("and other ", ""), values: e.values, type: "OpEx" as const })),
   ];
-  const stackedData = selectedIndices.map(i => {
+
+  const allCategoryNames = allCategories.map(c => c.name);
+  const catsParam = sp.cats?.trim();
+  const isExplicitNone = catsParam === "__none__";
+  const selectedCats: string[] = !catsParam || catsParam === ""
+    ? []                                            // empty = all selected
+    : isExplicitNone
+      ? ["__none__"]
+      : catsParam.split(",").map(s => s.trim()).filter(s => allCategoryNames.includes(s));
+  const allCatsImplicit = selectedCats.length === 0;
+  const isCatSelected = (name: string) =>
+    isExplicitNone ? false : allCatsImplicit ? true : selectedCats.includes(name);
+  const filteredCategories = allCategories.filter(c => isCatSelected(c.name));
+
+  // ── Primary chart: stacked by category, over the effective window ────────
+  const stackedData = effectiveIndices.map(i => {
     const row: Record<string, number | string> = { label: data.pl.months[i]?.label ?? "" };
-    for (const c of allCategories) row[c.name] = c.values[i] ?? 0;
+    for (const c of filteredCategories) row[c.name] = c.values[i] ?? 0;
     return row;
   });
-  const stackedSeries = allCategories.map(c => ({ key: c.name, label: c.name }));
-
-  // ── Secondary chart: cost as % of revenue, line per month ────────────────
-  const ratioData = selectedIndices.map(i => {
-    const r = data.pl.revenue[i] ?? 0;
-    return {
-      label: data.pl.months[i]?.label ?? "",
-      cogs: r > 0 ? (data.pl.cogs[i] ?? 0) / r : 0,
-      opex: r > 0 ? (data.pl.opex[i] ?? 0) / r : 0,
-    };
-  });
-  void ratioData;
+  const stackedSeries = filteredCategories.map(c => ({ key: c.name, label: c.name }));
 
   // ── Tertiary: by type (COGS / OpEx) and ranked by category ───────────────
+  const effectiveTypeTotals = filteredCategories.reduce(
+    (acc, c) => {
+      const sum = sumAt(c.values, effectiveIndices);
+      if (c.type === "COGS") acc.cogs += sum;
+      else acc.opex += sum;
+      return acc;
+    },
+    { cogs: 0, opex: 0 },
+  );
   const byType: Array<{ label: string; value: number }> = [
-    { label: "COGS", value: cogs },
-    { label: "OpEx", value: opex },
+    { label: "COGS", value: effectiveTypeTotals.cogs },
+    { label: "OpEx", value: effectiveTypeTotals.opex },
   ];
-  const rankedByCategory: Array<{ label: string; value: number }> = Object.entries({ ...cogsByCat, ...opexByCat })
-    .map(([name, value]) => ({ label: name, value }))
+  const rankedByCategory: Array<{ label: string; value: number }> = filteredCategories
+    .map(c => ({ label: c.name, value: sumAt(c.values, effectiveIndices) }))
+    .filter(d => d.value !== 0)
     .sort((a, b) => b.value - a.value)
-    .slice(0, 10);
+    .slice(0, 12);
 
-  // ── Vendor MoM table ─────────────────────────────────────────────────────
+  // ── Vendor MoM table — filtered by both effective window AND categories ─
+  const filteredCatNamesLC = new Set(filteredCategories.map(c => c.name.toLowerCase()));
   const buckets = new Map<string, { vendor: string; category: string; monthly: Record<string, number>; total: number }>();
   for (const t of expTxns) {
     const tIso = monthFromDate(t.date);
-    if (!tIso || !selectedMonths.includes(tIso)) continue;
+    if (!tIso || !effectiveMonths.includes(tIso)) continue;
+    // Match transactions to their category, case-insensitive prefix match
+    const txnCat = (t.category || "").toLowerCase();
+    const matched = isExplicitNone
+      ? false
+      : allCatsImplicit
+        ? true
+        : [...filteredCatNamesLC].some(c => txnCat.includes(c) || c.includes(txnCat));
+    if (!matched) continue;
     const key = (t.vendor || "—") + "||" + t.category;
     let b = buckets.get(key);
     if (!b) { b = { vendor: t.vendor || "—", category: t.category, monthly: {}, total: 0 }; buckets.set(key, b); }
@@ -254,37 +308,74 @@ export default async function ExpensesPage({ searchParams }: Props) {
           <KpiStat label="Active Vendors" value={String(distinctVendors.size)} size="sm" />
         </section>
 
-        <section className="mt-8">
+        <SectionTitle label={`Chart scope · ${effectiveLabel}`} className="mt-8" />
+        <div className="mb-4 flex flex-wrap items-center gap-4 rounded-xl border border-[var(--card-border)] bg-[var(--card)] px-4 py-3 backdrop-blur">
+          <ScopeToggle
+            value={scope}
+            monthLabel={selectedMonthLabel}
+            rangeLabel={periodLabel}
+            ytdLabel={ytdLabel}
+          />
+          <span className="h-5 w-px bg-[var(--card-border)]" />
+          <CategoryMultiSelect
+            paramName="cats"
+            label="Categories"
+            options={allCategoryNames}
+            selected={isExplicitNone ? [] : selectedCats}
+          />
+        </div>
+
+        <section>
           <CardShell
             title="Expenses by category"
-            subtitle={`Stacked monthly · biggest category at the base${hasForecast ? " · shaded region is forecast" : ""}`}
+            subtitle={`Stacked over ${effectiveLabel.toLowerCase()} · biggest category at the base${scope === "range" && hasForecast ? " · shaded region is forecast" : ""}${!allCatsImplicit && !isExplicitNone ? ` · ${selectedCats.length} of ${allCategoryNames.length} categories` : ""}`}
           >
-            <StackedBarChart
-              data={stackedData}
-              xKey="label"
-              series={stackedSeries}
-              paletteSort="red"
-              format="currency"
-              height={320}
-              forecastStartIndex={hasForecast ? forecastStartInSelection : undefined}
-            />
+            {stackedSeries.length === 0 ? (
+              <p className="px-1 py-12 text-center text-[12px] text-muted-foreground">
+                No categories selected — pick at least one from the Categories filter above.
+              </p>
+            ) : (
+              <StackedBarChart
+                data={stackedData}
+                xKey="label"
+                series={stackedSeries}
+                paletteSort="red"
+                format="currency"
+                height={320}
+                forecastStartIndex={
+                  scope === "range" && hasForecast ? forecastStartInSelection : undefined
+                }
+              />
+            )}
           </CardShell>
         </section>
 
         <section className="mt-6 grid grid-cols-1 gap-4 lg:grid-cols-2">
-          <CardShell title="By type" subtitle="COGS vs OpEx for the selected period">
+          <CardShell title="By type" subtitle={`COGS vs OpEx · ${effectiveLabel.toLowerCase()}`}>
             <VerticalBarChart data={byType} color="#ef4444" format="currency" height={260} />
           </CardShell>
-          <CardShell title="By category" subtitle="Top 10 categories by spend">
-            <RankedBarChart data={rankedByCategory} color="#ef4444" format="currency" height={300} maxItems={10} />
+          <CardShell
+            title="By category"
+            subtitle={`Top 12 by spend · ${effectiveLabel.toLowerCase()}`}
+          >
+            {rankedByCategory.length === 0 ? (
+              <p className="px-1 py-12 text-center text-[12px] text-muted-foreground">
+                No matching category totals in this window.
+              </p>
+            ) : (
+              <RankedBarChart data={rankedByCategory} color="#ef4444" format="currency" height={300} maxItems={12} />
+            )}
           </CardShell>
         </section>
 
         <section className="mt-8">
-          <CardShell title="Vendor × month spend" subtitle="One row per vendor × category — sort and search">
+          <CardShell
+            title="Vendor × month spend"
+            subtitle={`One row per vendor × category · ${effectiveLabel.toLowerCase()}${!allCatsImplicit && !isExplicitNone ? ` · filtered to ${selectedCats.length} category${selectedCats.length === 1 ? "" : "ies"}` : ""}`}
+          >
             <MonthOverMonthTable
               rows={vendorRows}
-              monthsIso={selectedMonths}
+              monthsIso={effectiveMonths}
               primaryHeader="Vendor"
               tertiaryHeader="Category"
               barColor="rgba(244,63,94,0.45)"
