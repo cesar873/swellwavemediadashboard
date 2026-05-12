@@ -8,13 +8,21 @@
     "start": "next start"
   },
   "dependencies": {
-    "chart.js": "^4.5.1",
-    "chartjs-plugin-datalabels": "^2.2.0",
+    "@radix-ui/react-dropdown-menu": "^2.1.16",
+    "@radix-ui/react-popover": "^1.1.15",
+    "@radix-ui/react-select": "^2.2.6",
+    "@radix-ui/react-slot": "^1.2.4",
+    "@tailwindcss/postcss": "^4.3.0",
+    "@tanstack/react-table": "^8.21.3",
+    "clsx": "^2.1.1",
     "googleapis": "^171.4.0",
+    "lucide-react": "^1.14.0",
     "next": "16.2.5",
     "react": "19.2.4",
-    "react-chartjs-2": "^5.3.1",
-    "react-dom": "19.2.4"
+    "react-dom": "19.2.4",
+    "recharts": "^3.8.1",
+    "tailwind-merge": "^3.6.0",
+    "tailwindcss": "^4.3.0"
   },
   "devDependencies": {
     "@types/node": "^20",
