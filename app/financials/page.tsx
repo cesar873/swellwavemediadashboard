@@ -121,10 +121,10 @@ export default async function FinancialsPage({ searchParams }: Props) {
     }
   }
 
-  // Budget overrun callout
-  if (data.budget?.length) {
-    const monthLabelSet = new Set(boot.selectedMonths.map(iso => isoToLabel(iso).toLowerCase()));
-    const inRange = data.budget.filter(b => monthLabelSet.has(b.month.trim().toLowerCase()) && !b.isTotal && b.group !== "Revenue");
+  // Budget overrun callout — single month (matches the Budget vs Actual table)
+  if (data.budget?.length && selectedMonthIso) {
+    const targetLabel = isoToLabel(selectedMonthIso).toLowerCase();
+    const inRange = data.budget.filter(b => b.month.trim().toLowerCase() === targetLabel && !b.isTotal && b.group !== "Revenue");
     const aggBy = new Map<string, { budget: number; actual: number }>();
     for (const b of inRange) {
       const k = b.category;
@@ -197,12 +197,15 @@ export default async function FinancialsPage({ searchParams }: Props) {
     { label: "Net Margin",   values: data.pl.netMargin.map(v => v / 100), emphasis: "muted", isMargin: true },
   ];
 
-  // ── Budget vs Actual aggregation ─────────────────────────────────────────
+  // ── Budget vs Actual — single-month (from the Month picker) ──────────────
+  // The Budget tab is keyed by month in the sheet, so it makes sense to
+  // compare like-for-like: one month's budget against that month's actual.
+  // Aggregating across the range hid the per-month variances.
   const bvaGroups: BvaGroup[] = [];
   let bvaNet: { label: string; budget: number; actual: number } | undefined;
-  if (data.budget?.length) {
-    const monthLabelSet = new Set(boot.selectedMonths.map(iso => isoToLabel(iso).toLowerCase()));
-    const inRange = data.budget.filter(b => monthLabelSet.has(b.month.trim().toLowerCase()));
+  if (data.budget?.length && selectedMonthIso) {
+    const targetLabel = isoToLabel(selectedMonthIso).toLowerCase();
+    const inRange = data.budget.filter(b => b.month.trim().toLowerCase() === targetLabel);
     const byGroupCat = new Map<string, Map<string, { budget: number; actual: number; isTotal: boolean }>>();
     for (const b of inRange) {
       const inner = byGroupCat.get(b.group) ?? new Map();
@@ -408,10 +411,10 @@ export default async function FinancialsPage({ searchParams }: Props) {
         {bvaGroups.length > 0 && (
           <section className="mt-8">
             <CardShell
-              title="Budget vs Actual"
-              subtitle={`Categorised across the selected months · ordered Revenue → COGS → Expenses`}
+              title={`Budget vs Actual · ${selectedMonthLabel}`}
+              subtitle={`Single-month comparison · ordered Revenue → COGS → Expenses · use the Month picker above to switch months${selectedMonthIsForecast ? " · forecast month" : ""}`}
             >
-              <BudgetVsActualTable groups={bvaGroups} netRow={bvaNet} rangeLabel={periodLabel} />
+              <BudgetVsActualTable groups={bvaGroups} netRow={bvaNet} rangeLabel={selectedMonthLabel} />
             </CardShell>
           </section>
         )}
