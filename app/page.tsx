@@ -37,6 +37,14 @@ const fmtDate = (s: string) => {
   if (isNaN(+d)) return s;
   return d.toLocaleDateString('en-US', { month: 'short', day: '2-digit', year: 'numeric' });
 };
+const MONTH_ABBR = ['jan','feb','mar','apr','may','jun','jul','aug','sep','oct','nov','dec'];
+function dateToMonthIdx(dateStr: string, labels: string[]): number {
+  if (!dateStr) return -1;
+  const d = new Date(dateStr);
+  if (isNaN(+d)) return -1;
+  const target = `${MONTH_ABBR[d.getUTCMonth()]} ${d.getUTCFullYear()}`;
+  return labels.findIndex(l => l.toLowerCase().startsWith(target));
+}
 const pp    = (a: number, b: number) => { const d = a - b; return { d, cls: d >= 0 ? 'up' : 'down', str: (d >= 0 ? '+' : '') + d.toFixed(1) + 'pp' }; };
 const mom   = (a: number, b: number) => { if (!b) return { d: 0, cls: 'flat', str: '—' }; const d = ((a - b) / Math.abs(b)) * 100; return { d, cls: d >= 0 ? 'up' : 'down', str: (d >= 0 ? '+' : '') + d.toFixed(1) + '%' }; };
 
@@ -730,71 +738,85 @@ export default function Dashboard() {
         </div>
 
         <div className="panel gap">
-          <h2>Spend by Category × Month</h2>
-          <div className="sub">One row per expense category · scroll horizontally · total locked right</div>
-          <div className="filter-bar">
-            <input type="text" placeholder="Search category…" value={momExpSearch} onChange={e => setMomExpSearch(e.target.value)} style={{minWidth:200}} />
-            <select value={momExpCat} onChange={e => setMomExpCat(e.target.value)}>
-              <option value="">All Categories</option>
-              <option value="COGS">COGS</option>
-              <option value="OpEx">OpEx</option>
-            </select>
-            {(() => {
-              const cogsRows = cogsCategories.map(c => ({ name: c.name.replace('- Service Delivery','').trim(), type:'COGS', values: c.values }));
-              const opexRows = expenseCategories.filter(e => e.values.slice(0,N).some(v=>v>0)).map(e => ({ name: e.name.replace(' Expenses','').replace('and other ',''), type:'OpEx', values: e.values }));
-              const all = [...cogsRows, ...opexRows]
-                .filter(r => !momExpSearch || r.name.toLowerCase().includes(momExpSearch.toLowerCase()))
-                .filter(r => !momExpCat || r.type === momExpCat);
-              const rangeTotal = all.reduce((sum, r) => sum + r.values.slice(rStart, rEnd+1).reduce((a,b)=>a+b,0), 0);
-              return <span className="tbl-count">{all.length} categories · {fmtFull(rangeTotal)} in range</span>;
-            })()}
-          </div>
-          <div className="mom-wrap">
-            {(() => {
-              const cogsRows = cogsCategories.map(c => ({ name: c.name.replace('- Service Delivery','').trim(), type:'COGS' as const, values: c.values }));
-              const opexRows = expenseCategories.filter(e => e.values.slice(0,N).some(v=>v>0)).map(e => ({ name: e.name.replace(' Expenses','').replace('and other ',''), type:'OpEx' as const, values: e.values }));
-              const rows = [...cogsRows, ...opexRows]
-                .filter(r => !momExpSearch || r.name.toLowerCase().includes(momExpSearch.toLowerCase()))
-                .filter(r => !momExpCat || r.type === momExpCat)
-                .map(r => ({ ...r, rangeTotal: r.values.slice(rStart, rEnd+1).reduce((a,b)=>a+b,0) }))
-                .sort((a,b) => b.rangeTotal - a.rangeTotal);
-              const colTotals = rangeLabels.map((_, i) => rows.reduce((sum, r) => sum + (r.values[rStart + i] ?? 0), 0));
-              const grandTotal = colTotals.reduce((a,b)=>a+b,0);
-              return (
-                <table className="mom-tbl">
-                  <thead>
-                    <tr>
-                      <th className="col-frozen" style={{textAlign:'left', minWidth:200}}>Category</th>
-                      <th style={{minWidth:64}}>Type</th>
-                      <th style={{minWidth:110, color:'var(--amber)'}}>Total (range)</th>
-                      {rangeLabels.map(l => <th key={l} style={{minWidth:110}}>{l}</th>)}
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {rows.map((r, i) => (
-                      <tr key={i}>
-                        <td className="col-frozen">{r.name}</td>
-                        <td><span className={`pill ${r.type === 'COGS' ? 'info' : 'warn'}`}>{r.type}</span></td>
-                        <td className="num" style={{color:'var(--amber)'}}><strong>{fmtFull(r.rangeTotal)}</strong></td>
-                        {rangeLabels.map((_, j) => {
-                          const v = r.values[rStart + j] ?? 0;
-                          return <td key={j} className="num" style={{color: v > 0 ? (r.type==='COGS' ? 'var(--red)' : 'var(--amber)') : undefined}}>{v > 0 ? fmtFull(v) : <span className="cell-zero">—</span>}</td>;
-                        })}
-                      </tr>
-                    ))}
-                  </tbody>
-                  <tfoot>
-                    <tr>
-                      <td className="col-frozen"><strong>Total Spend</strong></td>
-                      <td>—</td>
-                      <td className="num" style={{color:'var(--amber)'}}><strong>{fmtFull(grandTotal)}</strong></td>
-                      {colTotals.map((v, i) => <td key={i} className="num"><strong>{fmtFull(v)}</strong></td>)}
-                    </tr>
-                  </tfoot>
-                </table>
-              );
-            })()}
-          </div>
+          <h2>Spend by Vendor × Category × Month</h2>
+          <div className="sub">One row per vendor × category · scroll horizontally · total locked right</div>
+          {(() => {
+            // Aggregate expense transactions by (vendor, category) into monthly buckets
+            const buckets = new Map<string, { vendor: string; category: string; monthly: number[] }>();
+            for (const t of transactions) {
+              if (t.kind !== 'Expense') continue;
+              const idx = dateToMonthIdx(t.date, labels);
+              if (idx < 0) continue;
+              const vendor = t.vendor || '—';
+              const key = vendor + '||' + t.category;
+              let b = buckets.get(key);
+              if (!b) { b = { vendor, category: t.category, monthly: Array(N).fill(0) }; buckets.set(key, b); }
+              b.monthly[idx] += t.amount;
+            }
+            const allRows = [...buckets.values()];
+            const cats = [...new Set(allRows.map(r => r.category))].sort();
+
+            const filteredRows = allRows
+              .filter(r => !momExpCat    || r.category === momExpCat)
+              .filter(r => !momExpSearch || (r.vendor + ' ' + r.category).toLowerCase().includes(momExpSearch.toLowerCase()))
+              .map(r => ({ ...r, rangeTotal: r.monthly.slice(rStart, rEnd+1).reduce((a,b)=>a+b,0) }))
+              .sort((a,b) => b.rangeTotal - a.rangeTotal);
+
+            const colTotals  = rangeLabels.map((_, i) => filteredRows.reduce((sum, r) => sum + (r.monthly[rStart + i] ?? 0), 0));
+            const grandTotal = colTotals.reduce((a,b)=>a+b,0);
+
+            return (
+              <>
+                <div className="filter-bar">
+                  <input type="text" placeholder="Search vendor…" value={momExpSearch} onChange={e => setMomExpSearch(e.target.value)} style={{minWidth:200}} />
+                  <select value={momExpCat} onChange={e => setMomExpCat(e.target.value)}>
+                    <option value="">All Categories</option>
+                    {cats.map(c => <option key={c} value={c}>{c}</option>)}
+                  </select>
+                  <span className="tbl-count">{filteredRows.length} rows · {fmtFull(grandTotal)} in range</span>
+                </div>
+                <div className="mom-wrap">
+                  {filteredRows.length === 0 ? (
+                    <div style={{padding:20, color:'var(--muted)', fontSize:13, textAlign:'center'}}>
+                      {transactions.length === 0 ? 'No transactions in sheet yet.' : 'No matching rows.'}
+                    </div>
+                  ) : (
+                    <table className="mom-tbl">
+                      <thead>
+                        <tr>
+                          <th className="col-frozen" style={{textAlign:'left', minWidth:200}}>Vendor</th>
+                          <th style={{minWidth:180}}>Category</th>
+                          <th style={{minWidth:110, color:'var(--amber)'}}>Total (range)</th>
+                          {rangeLabels.map(l => <th key={l} style={{minWidth:110}}>{l}</th>)}
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {filteredRows.slice(0, 300).map((r, i) => (
+                          <tr key={i}>
+                            <td className="col-frozen"><strong>{r.vendor}</strong></td>
+                            <td style={{fontSize:11, color:'var(--muted)'}}>{r.category}</td>
+                            <td className="num" style={{color:'var(--amber)'}}><strong>{fmtFull(r.rangeTotal)}</strong></td>
+                            {rangeLabels.map((_, j) => {
+                              const v = r.monthly[rStart + j] ?? 0;
+                              return <td key={j} className="num" style={{color: v > 0 ? 'var(--red)' : undefined}}>{v > 0 ? fmtFull(v) : <span className="cell-zero">—</span>}</td>;
+                            })}
+                          </tr>
+                        ))}
+                      </tbody>
+                      <tfoot>
+                        <tr>
+                          <td className="col-frozen"><strong>Total Spend</strong></td>
+                          <td>—</td>
+                          <td className="num" style={{color:'var(--amber)'}}><strong>{fmtFull(grandTotal)}</strong></td>
+                          {colTotals.map((v, i) => <td key={i} className="num"><strong>{fmtFull(v)}</strong></td>)}
+                        </tr>
+                      </tfoot>
+                    </table>
+                  )}
+                </div>
+              </>
+            );
+          })()}
         </div>
 
         {/* Expense Transactions — transaction-level */}
