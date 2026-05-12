@@ -144,6 +144,9 @@ export async function fetchDashboardData(): Promise<DashboardData> {
   // Walk every row between the section boundaries and grab anything with a label
   // and non-zero data — that way we pick up whatever categories the sheet has,
   // not just a hardcoded list.
+  const incomeSummaryIdx = findRow(plGrid, 'Income Summary')?.idx
+                        ?? findRow(plGrid, 'Revenue Summary')?.idx
+                        ?? -1;
   const totalRevIdx  = findRow(plGrid, 'Total Revenue')?.idx ?? -1;
   const totalCogsIdx = findRow(plGrid, 'TOTAL COST OF SALES')?.idx
                     ?? findRow(plGrid, 'Total Cost of Sales')?.idx
@@ -171,6 +174,8 @@ export async function fetchDashboardData(): Promise<DashboardData> {
     return out;
   }
 
+  const revenueCategories: { name: string; values: number[] }[] =
+    extractDetailRows(incomeSummaryIdx, totalRevIdx);
   const cogsCategories: COGSCategory[]     = extractDetailRows(totalRevIdx,  totalCogsIdx);
   const expenseCategories: ExpenseCategory[] = extractDetailRows(totalCogsIdx, totalOpexIdx);
 
@@ -455,6 +460,7 @@ export async function fetchDashboardData(): Promise<DashboardData> {
   return {
     lastUpdated: new Date().toISOString(),
     pl,
+    revenueCategories,
     expenseCategories,
     cogsCategories,
     clients: clientRows,

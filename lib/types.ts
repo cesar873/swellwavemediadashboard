@@ -24,6 +24,11 @@ export interface COGSCategory {
   values: number[];
 }
 
+export interface RevenueCategory {
+  name: string;
+  values: number[];
+}
+
 export interface ClientRow {
   client: string;
   status: string;
@@ -116,6 +121,7 @@ export interface TeamProfitRow {
 export interface DashboardData {
   lastUpdated: string;
   pl: PLData;
+  revenueCategories: RevenueCategory[];
   expenseCategories: ExpenseCategory[];
   cogsCategories: COGSCategory[];
   clients: ClientRow[];

@@ -10,7 +10,7 @@ import { StackedBarChart } from "@/components/charts/StackedBarChart";
 import { RankedBarChart } from "@/components/charts/RankedBarChart";
 import { MoverCard } from "@/components/insights/MoverCard";
 import { MonthOverMonthTable, type MoMRow } from "@/components/tables/MonthOverMonthTable";
-import { bootstrapPage, type PageSearchParams } from "@/lib/page-bootstrap";
+import { bootstrapPage, sumAt, type PageSearchParams } from "@/lib/page-bootstrap";
 import { labelToIso } from "@/lib/period";
 import { formatCurrency, formatPercent, type Tone } from "@/lib/utils";
 import type { Metadata } from "next";
@@ -42,8 +42,16 @@ export default async function RevenuePage({ searchParams }: Props) {
     priorIndices.reduce((a, i) => a + (c.monthlyRevenue[i] ?? 0), 0);
 
   // ── KPI aggregations ─────────────────────────────────────────────────────
-  const total = clientRows.reduce((a, c) => a + totalRev(c), 0);
-  const totalPrior = clientRows.reduce((a, c) => a + priorRev(c), 0);
+  // Total Revenue reads from the P&L "Total Revenue" row (the same source the
+  // Financials tab uses) so the headline number matches across tabs. The
+  // per-client sums may differ if some revenue on the P&L isn't allocated to
+  // a client row in the Clients tab — the breakdown views below still show
+  // composition from client data, but the KPI is sourced from P&L.
+  const total = sumAt(data.pl.revenue, selectedIndices);
+  const totalPrior = sumAt(data.pl.revenue, priorIndices);
+  const clientSumTotal = clientRows.reduce((a, c) => a + totalRev(c), 0);
+  const allocationGap = total - clientSumTotal;
+  const allocationGapPct = total > 0 ? allocationGap / total : 0;
   const active = clientRows.filter(c => totalRev(c) > 0);
   const avgPerClient = active.length ? total / active.length : 0;
 
@@ -75,6 +83,14 @@ export default async function RevenuePage({ searchParams }: Props) {
 
   // ── Insights ─────────────────────────────────────────────────────────────
   const insights: Insight[] = [];
+  // Allocation gap (P&L total vs per-client sum). > 1% = worth flagging because
+  // the breakdown charts below won't sum to the headline KPI.
+  if (Math.abs(allocationGapPct) > 0.01 && total > 0) {
+    insights.push({
+      type: "info",
+      text: `${allocationGap >= 0 ? "+" : "-"}${formatCurrency(Math.abs(allocationGap), { compact: true })} of revenue (${(allocationGapPct * 100).toFixed(1)}%) is in the P&L but not allocated to a client in the Clients tab — breakdown charts will sum slightly lower than the KPI.`,
+    });
+  }
   if (deltaTotal != null) {
     if (deltaTotal >= 0.05) insights.push({ type: "win",  text: `Revenue grew +${(deltaTotal*100).toFixed(1)}% vs prior — document what drove it.` });
     else if (deltaTotal <= -0.05) insights.push({ type: "warn", text: `Revenue down ${(deltaTotal*100).toFixed(1)}% vs prior — investigate.` });
@@ -114,16 +130,17 @@ export default async function RevenuePage({ searchParams }: Props) {
   }
 
   // ── Single-month snapshot ────────────────────────────────────────────────
+  // Headline mTotal also sourced from the P&L for cross-tab consistency.
   const mIdx = selectedMonthIndex;
   const pmIdx = priorMonthIndex;
   const monthRev = (c: typeof clientRows[number], i: number) => (i >= 0 ? c.monthlyRevenue[i] ?? 0 : 0);
-  const mTotal      = clientRows.reduce((a, c) => a + monthRev(c, mIdx), 0);
-  const mTotalPrior = clientRows.reduce((a, c) => a + monthRev(c, pmIdx), 0);
+  const mTotal      = mIdx >= 0 ? (data.pl.revenue[mIdx] ?? 0) : 0;
+  const mTotalPrior = pmIdx >= 0 ? (data.pl.revenue[pmIdx] ?? 0) : 0;
   const mActive     = clientRows.filter(c => monthRev(c, mIdx) > 0);
   const mAvg        = mActive.length ? mTotal / mActive.length : 0;
   // New clients in selected month: first non-zero month is exactly mIdx
   const mNewClients = clientRows.filter(c => c.monthlyRevenue.findIndex(v => (v ?? 0) > 0) === mIdx).length;
-  // Single-month top-3 share
+  // Single-month top-3 share — denominator stays P&L total
   const mSortedByMonth = [...clientRows].map(c => monthRev(c, mIdx)).sort((a, b) => b - a);
   const mTop3 = mSortedByMonth.slice(0, 3).reduce((a, v) => a + v, 0);
   const mTop3Share = mTotal > 0 ? mTop3 / mTotal : 0;

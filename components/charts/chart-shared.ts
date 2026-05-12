@@ -24,31 +24,40 @@ export const CATEGORICAL = [
   CHART_PALETTE.red,
 ];
 
-// Stacked-bar palettes: ANCHOR colour first, then rotate through the categorical
-// palette so neighbouring series are visually distinct (not a single-hue gradient).
-// `paletteSort: blue|red|green` controls only the anchor; the rest of the stack
-// gets distinct hues so adjacent slices never read as the same colour.
-function rotateFrom(anchor: string): string[] {
-  const rest = CATEGORICAL.filter(c => c !== anchor);
-  return [anchor, ...rest];
-}
-export const PALETTE_BLUE  = rotateFrom(CHART_PALETTE.blue);
-export const PALETTE_GREEN = rotateFrom(CHART_PALETTE.green);
+// Stacked-bar palettes — single-hue gradients, darkest first. Combined with
+// the descending sort in StackedBarChart, the BIGGEST category sits at the
+// base in the boldest shade and series fade as they get smaller.
+export const PALETTE_BLUE = [
+  "#0c4a82",
+  "#1265b0",
+  "#1390eb", // primary brand blue
+  "#3aa6f0",
+  "#62bbf5",
+  "#8ed0fa",
+  "#b9e2ff",
+  "#dceffe",
+];
 
-// PALETTE_RED is used by the Expenses tab. The full categorical rotation lit
-// up with bright yellow / cyan / pink which read as harsh on the dark navy
-// background, so use a muted cost-y palette: anchor red, then desaturated
-// teals / golds / sages / dusty hues. Still 8 distinct colours; nothing pure
-// fluorescent.
 export const PALETTE_RED = [
-  CHART_PALETTE.red, // #ef4444 — anchor (biggest cost at base)
-  "#5b8dbe", // muted blue / slate
-  "#7aa37e", // sage green
-  "#9078b3", // muted purple
-  "#caa747", // muted gold (was bright yellow)
-  "#c4793d", // burnt orange (was bright amber)
-  "#5e9aa3", // slate teal (was bright cyan)
-  "#b07a8e", // dusty rose (was bright pink)
+  "#7f1d1d",
+  "#b91c1c",
+  "#dc2626",
+  "#ef4444", // primary brand red
+  "#f87171",
+  "#fca5a5",
+  "#fecaca",
+  "#fee2e2",
+];
+
+export const PALETTE_GREEN = [
+  "#14532d",
+  "#166534",
+  "#15803d",
+  "#22c55e", // primary brand green
+  "#4ade80",
+  "#86efac",
+  "#bbf7d0",
+  "#dcfce7",
 ];
 
 export type ChartFormat = "currency" | "percent" | "number";

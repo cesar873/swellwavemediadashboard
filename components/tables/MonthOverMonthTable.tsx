@@ -10,7 +10,8 @@ import {
   type ColumnDef,
   type SortingState,
 } from "@tanstack/react-table";
-import { Search } from "lucide-react";
+import * as Popover from "@radix-ui/react-popover";
+import { Check, ChevronDown, Search, X } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { isoToLabel } from "@/lib/period";
 import { formatLong } from "../charts/chart-shared";
@@ -34,6 +35,9 @@ export interface MonthOverMonthTableProps {
   searchPlaceholder?: string;
   /** Phase 2: months > latestActualIso render italic to flag forecast. */
   latestActualIso?: string;
+  /** When set, renders an in-table multi-select that filters rows by the
+   *  named field (e.g. `secondary` for "Category" on the vendor table). */
+  filterBy?: { key: "secondary" | "tertiary"; label: string };
 }
 
 export function MonthOverMonthTable({
@@ -45,8 +49,33 @@ export function MonthOverMonthTable({
   barColor = "rgba(34,211,238,0.45)",
   searchPlaceholder = "Search…",
   latestActualIso,
+  filterBy,
 }: MonthOverMonthTableProps) {
   const isForecastIso = (iso: string) => !!latestActualIso && iso > latestActualIso;
+
+  // In-table category filter (optional).
+  const filterOptions = useMemo(() => {
+    if (!filterBy) return [] as string[];
+    const set = new Set<string>();
+    for (const r of rows) {
+      const v = r[filterBy.key];
+      if (v) set.add(v);
+    }
+    return [...set].sort();
+  }, [rows, filterBy]);
+  const [filterSelected, setFilterSelected] = useState<string[]>([]);
+  const [filterOpen, setFilterOpen] = useState(false);
+  const [filterQuery, setFilterQuery] = useState("");
+  const filterAllSelected =
+    filterOptions.length === 0 || filterSelected.length === 0 || filterSelected.length === filterOptions.length;
+  const filterSelectedSet = useMemo(() => new Set(filterSelected), [filterSelected]);
+  const toggleFilter = (opt: string) => {
+    const current = filterSelected.length === 0 ? [...filterOptions] : [...filterSelected];
+    const i = current.indexOf(opt);
+    if (i >= 0) current.splice(i, 1);
+    else current.push(opt);
+    setFilterSelected(current.length === filterOptions.length ? [] : current);
+  };
   const [globalFilter, setGlobalFilter] = useState("");
   const [sorting, setSorting] = useState<SortingState>([{ id: "total", desc: true }]);
 
@@ -115,8 +144,17 @@ export function MonthOverMonthTable({
     return cols;
   }, [primaryHeader, tertiaryHeader, monthsIso, barColor, maxTotal, latestActualIso]);
 
+  // Apply filter-by category before passing to the table.
+  const filteredRows = useMemo(() => {
+    if (!filterBy || filterAllSelected) return rows;
+    return rows.filter(r => {
+      const v = r[filterBy.key];
+      return v != null && filterSelectedSet.has(v);
+    });
+  }, [rows, filterBy, filterAllSelected, filterSelectedSet]);
+
   const table = useReactTable({
-    data: rows,
+    data: filteredRows,
     columns,
     state: { globalFilter, sorting },
     onGlobalFilterChange: setGlobalFilter,
@@ -138,7 +176,7 @@ export function MonthOverMonthTable({
 
   return (
     <div>
-      <div className="mb-3 flex items-center gap-2">
+      <div className="mb-3 flex flex-wrap items-center gap-2">
         <div className="relative">
           <Search className="absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
           <input
@@ -148,6 +186,94 @@ export function MonthOverMonthTable({
             className="h-8 w-64 rounded-md border border-[var(--card-border)] bg-white/5 pl-8 pr-3 text-[12px] text-foreground placeholder:text-muted-foreground/60 focus:border-[var(--blue)] focus:outline-none"
           />
         </div>
+
+        {filterBy && filterOptions.length > 0 && (
+          <Popover.Root open={filterOpen} onOpenChange={setFilterOpen}>
+            <div className="inline-flex items-center gap-2">
+              <span className="text-[10px] font-semibold uppercase tracking-[0.12em] text-[color:var(--muted)]">
+                {filterBy.label}
+              </span>
+              <Popover.Trigger asChild>
+                <button
+                  type="button"
+                  className={cn(
+                    "inline-flex h-8 items-center gap-1.5 rounded-md border border-[var(--card-border)] bg-white/5 px-2.5 text-[11px] font-medium text-foreground transition hover:border-[var(--blue)]/40 focus:border-[var(--blue)] focus:outline-none",
+                    !filterAllSelected && "border-[var(--blue)]/40 bg-[var(--blue-soft)]/30 text-[var(--blue)]",
+                  )}
+                >
+                  <span className="tabular-nums">
+                    {filterAllSelected ? `All ${filterOptions.length}` : `${filterSelected.length} of ${filterOptions.length}`}
+                  </span>
+                  <ChevronDown className="h-3.5 w-3.5 opacity-60" />
+                </button>
+              </Popover.Trigger>
+              {!filterAllSelected && (
+                <button
+                  type="button"
+                  onClick={() => setFilterSelected([])}
+                  className="inline-flex h-8 items-center gap-1 rounded-md border border-[var(--card-border)] px-2 text-[10px] uppercase tracking-[0.08em] text-muted-foreground hover:text-foreground"
+                  title="Reset to all"
+                >
+                  <X className="h-3 w-3" />
+                  Clear
+                </button>
+              )}
+            </div>
+            <Popover.Portal>
+              <Popover.Content
+                align="start"
+                sideOffset={6}
+                className="z-50 w-72 rounded-lg border border-white/15 p-2 shadow-2xl"
+                style={{ background: "rgba(28, 60, 92, 0.96)", backdropFilter: "blur(10px)" }}
+              >
+                <input
+                  value={filterQuery}
+                  onChange={e => setFilterQuery(e.target.value)}
+                  placeholder={`Search ${filterBy.label.toLowerCase()}…`}
+                  className="mb-2 h-7 w-full rounded-md border border-[var(--card-border)] bg-white/5 px-2 text-[12px] text-foreground placeholder:text-muted-foreground/60 focus:border-[var(--blue)] focus:outline-none"
+                />
+                <div className="mb-2 flex items-center justify-between text-[10px] uppercase tracking-[0.08em] text-muted-foreground">
+                  <button
+                    type="button"
+                    onClick={() => setFilterSelected([])}
+                    className="hover:text-foreground"
+                  >
+                    Select all
+                  </button>
+                </div>
+                <ul className="max-h-64 overflow-y-auto">
+                  {filterOptions
+                    .filter(o => o.toLowerCase().includes(filterQuery.toLowerCase()))
+                    .map(opt => {
+                      const checked = filterAllSelected || filterSelectedSet.has(opt);
+                      return (
+                        <li key={opt}>
+                          <button
+                            type="button"
+                            onClick={() => toggleFilter(opt)}
+                            className="flex w-full items-center gap-2 rounded px-2 py-1.5 text-left text-[12px] text-foreground hover:bg-white/5"
+                          >
+                            <span
+                              className={cn(
+                                "inline-flex h-4 w-4 shrink-0 items-center justify-center rounded border",
+                                checked
+                                  ? "border-[var(--blue)] bg-[var(--blue)]/30"
+                                  : "border-[var(--card-border)] bg-transparent",
+                              )}
+                            >
+                              {checked && <Check className="h-3 w-3" style={{ color: "var(--blue)" }} />}
+                            </span>
+                            <span className="truncate">{opt}</span>
+                          </button>
+                        </li>
+                      );
+                    })}
+                </ul>
+              </Popover.Content>
+            </Popover.Portal>
+          </Popover.Root>
+        )}
+
         <span className="ml-auto text-[11px] text-muted-foreground tabular-nums">
           {table.getRowModel().rows.length} rows
         </span>

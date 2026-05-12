@@ -381,6 +381,7 @@ export default async function ExpensesPage({ searchParams }: Props) {
               barColor="rgba(244,63,94,0.45)"
               searchPlaceholder="Search vendor or category…"
               latestActualIso={latestActualIso}
+              filterBy={{ key: "secondary", label: "Category" }}
             />
           </CardShell>
         </section>

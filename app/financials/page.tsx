@@ -165,7 +165,12 @@ export default async function FinancialsPage({ searchParams }: Props) {
   const revRow: PnlGroup = {
     label: "Revenue",
     total: data.pl.revenue,
-    children: undefined,
+    children: data.revenueCategories
+      .filter(r => r.values.some(v => v !== 0))
+      .map(r => ({
+        name: r.name,
+        values: r.values.slice(0, data.pl.months.length),
+      })),
   };
 
   const cogsRow: PnlGroup = {

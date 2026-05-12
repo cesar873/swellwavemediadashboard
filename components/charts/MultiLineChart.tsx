@@ -29,8 +29,7 @@ export interface MultiLineChartProps {
   height?: number;
   /** First index in `data` that is forecast (Phase 2 styling). Omit in Phase 1. */
   forecastStartIndex?: number;
-  /** Draw per-point data labels above the line(s). Defaults true for a single
-   *  series and false for 2+ (avoids label overlap). */
+  /** Draw per-point data labels above each line. Defaults to true. */
   showLabels?: boolean;
 }
 
@@ -41,9 +40,13 @@ export function MultiLineChart({
   leftFormat = "currency",
   height = 280,
   forecastStartIndex,
-  showLabels,
+  showLabels = true,
 }: MultiLineChartProps) {
-  const labelsOn = showLabels ?? series.length <= 1;
+  const labelsOn = showLabels;
+  // For multi-series, alternate label position (top / bottom) so they don't
+  // pile on each other. Single-series always sits on top.
+  const labelPosition = (i: number): "top" | "bottom" =>
+    series.length <= 1 ? "top" : i % 2 === 0 ? "top" : "bottom";
   const hasForecast =
     forecastStartIndex != null &&
     forecastStartIndex >= 0 &&
@@ -74,7 +77,7 @@ export function MultiLineChart({
   return (
     <div style={{ width: "100%", height }}>
       <ResponsiveContainer>
-        <LineChart data={splitData} margin={{ top: 8, right: 12, left: 4, bottom: 4 }}>
+        <LineChart data={splitData} margin={{ top: 22, right: 12, left: 4, bottom: series.length > 1 ? 22 : 4 }}>
           <CartesianGrid stroke={GRID_STROKE} vertical={false} />
           <XAxis
             dataKey={xKey}
@@ -103,35 +106,37 @@ export function MultiLineChart({
               ifOverflow="extendDomain"
             />
           )}
-          {series.flatMap(s => {
+          {series.flatMap((s, sIdx) => {
             const fmt = s.format ?? leftFormat;
+            const pos = labelPosition(sIdx);
             const labelEl = labelsOn ? (
               <LabelList
                 key={`${s.key}-lbl`}
                 dataKey={hasForecast ? `${s.key}__a` : s.key}
-                position="top"
+                position={pos}
                 formatter={(v: unknown) =>
                   v == null || v === "" ? "" : formatCompact(Number(v), fmt)
                 }
-                fill={LABEL_FILL}
-                fontSize={11}
+                fill={s.color}
+                fontSize={10}
                 fontWeight={600}
-                offset={8}
+                offset={pos === "top" ? 8 : 6}
               />
             ) : null;
             const forecastLabelEl = labelsOn && hasForecast ? (
               <LabelList
                 key={`${s.key}-flbl`}
                 dataKey={`${s.key}__f`}
-                position="top"
+                position={pos}
                 formatter={(v: unknown) =>
                   v == null || v === "" ? "" : formatCompact(Number(v), fmt)
                 }
-                fill={LABEL_FILL}
-                fontSize={11}
+                fill={s.color}
+                fillOpacity={0.7}
+                fontSize={10}
                 fontWeight={600}
                 fontStyle="italic"
-                offset={8}
+                offset={pos === "top" ? 8 : 6}
               />
             ) : null;
             return hasForecast
