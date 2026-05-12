@@ -48,13 +48,22 @@ export function ChartCanvas({ config, className }: Props) {
   const ref = useRef<HTMLCanvasElement>(null);
   const chartRef = useRef<Chart | null>(null);
 
+  // Create the chart instance once on mount
   useEffect(() => {
     if (!ref.current) return;
-    chartRef.current?.destroy();
     chartRef.current = new Chart(ref.current, config);
-    return () => { chartRef.current?.destroy(); };
+    return () => { chartRef.current?.destroy(); chartRef.current = null; };
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // Push prop changes (data, options, type) back into the existing chart
+  useEffect(() => {
+    const c = chartRef.current;
+    if (!c) return;
+    c.data = config.data;
+    if (config.options) c.options = config.options;
+    c.update('none');
+  }, [config]);
 
   return <canvas ref={ref} className={className} />;
 }
