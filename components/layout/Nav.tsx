@@ -4,15 +4,14 @@ import Link from "next/link";
 import { usePathname, useSearchParams } from "next/navigation";
 import { cn } from "@/lib/utils";
 
-// formatting.md §1.5 + tabs.md §"Navigation order" — all phases enabled.
-// Tabs that lack data render an explicit empty state, not em-dashes.
+// formatting.md §1.5 + tabs.md §"Navigation order". Phase 1 only for now
+// (Analytics / Clients / People are deferred until their data sources are
+// confirmed). The pages still exist at /analytics, /client-profit and
+// /people-profit — they're just not linked from the nav.
 const NAV_ITEMS = [
-  { href: "/financials",    label: "Financials" },
-  { href: "/revenue",       label: "Revenue" },
-  { href: "/expenses",      label: "Expenses" },
-  { href: "/analytics",     label: "Analytics" },
-  { href: "/client-profit", label: "Clients" },
-  { href: "/people-profit", label: "People" },
+  { href: "/financials", label: "Financials" },
+  { href: "/revenue",    label: "Revenue" },
+  { href: "/expenses",   label: "Expenses" },
 ];
 
 const GLOBAL_PARAMS = ["months", "from", "to", "month"];
