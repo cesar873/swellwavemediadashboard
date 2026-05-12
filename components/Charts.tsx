@@ -25,6 +25,12 @@ Chart.defaults.color = 'rgba(255,255,255,0.65)';
 Chart.defaults.borderColor = 'rgba(255,255,255,0.06)';
 Chart.defaults.font.family = 'var(--font-dm-sans), system-ui, sans-serif';
 
+// Disable data labels by default — they're heavy and clutter bar charts. Charts
+// that genuinely benefit from per-point numbers (line charts) opt back in below
+// with subtle styling.
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+(Chart.defaults.plugins as any).datalabels = { display: false };
+
 const BLUE   = '#1390eb';
 const GREEN  = '#22c55e';
 const RED    = '#ef4444';
@@ -104,8 +110,8 @@ export function MarginChart({ labels, values, color, min, max }: {
       plugins: {
         legend: { display: false },
         datalabels: {
-          display: true, color, font: { size: 10, weight: 700 },
-          formatter: (v: number) => fmtPct(v), align: 'top', offset: 4,
+          display: true, color, font: { size: 9, weight: 500 as const },
+          formatter: (v: number) => fmtPct(v), align: 'top', offset: 6,
         },
       },
       scales: {
@@ -135,9 +141,9 @@ export function DualMarginChart({ labels, gross, operating }: {
       plugins: {
         legend: { position: 'top', labels: { boxWidth: 10, boxHeight: 10, padding: 14 } },
         datalabels: {
-          display: true, align: 'top', offset: 4, font: { size: 10, weight: 700 as const },
+          display: true, align: 'top', offset: 6, font: { size: 9, weight: 500 as const },
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          color: (ctx: any) => ctx.datasetIndex === 0 ? BLUE : GREEN,
+          color: (ctx: any) => ctx.datasetIndex === 0 ? 'rgba(19,144,235,0.85)' : 'rgba(34,197,94,0.85)',
           formatter: (v: number) => v.toFixed(1) + '%',
         },
       },
@@ -325,8 +331,8 @@ export function LabeledLineChart({ labels, datasets }: {
         datalabels: {
           display: true,
           align: 'top',
-          offset: 5,
-          font: { size: 10, weight: 700 as const },
+          offset: 6,
+          font: { size: 9, weight: 500 as const },
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
           color: (ctx: any) => datasets[ctx.datasetIndex]?.color ?? '#fff',
           formatter: (v: number) => fmt(v),

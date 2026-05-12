@@ -343,16 +343,25 @@ export default function Dashboard() {
         <div className="grid-2 gap">
           <div className="panel">
             <h2>Revenue vs Net Income</h2>
-            <div className="sub">Bars = revenue · line = net income · {labels[0]} – {labels[pidx]}</div>
+            <div className="sub">Bars = revenue · line = net income · {labels[rStart]} – {labels[rEnd]}</div>
             <div className="chart-wrap tall">
-              <TrendChart labels={labels} revenue={pl.revenue} cogs={pl.cogs} netIncome={pl.netIncome} />
+              <TrendChart
+                labels={rangeLabels}
+                revenue={pl.revenue.slice(rStart, rEnd+1)}
+                cogs={pl.cogs.slice(rStart, rEnd+1)}
+                netIncome={pl.netIncome.slice(rStart, rEnd+1)}
+              />
             </div>
           </div>
           <div className="panel">
             <h2>Monthly Margins</h2>
             <div className="sub">Gross margin vs operating margin trend</div>
             <div className="chart-wrap tall">
-              <DualMarginChart labels={labels} gross={pl.grossMargin} operating={operatingMargin} />
+              <DualMarginChart
+                labels={rangeLabels}
+                gross={pl.grossMargin.slice(rStart, rEnd+1)}
+                operating={operatingMargin.slice(rStart, rEnd+1)}
+              />
             </div>
           </div>
         </div>
@@ -631,15 +640,15 @@ export default function Dashboard() {
         <div className="grid-21 gap">
           <div className="panel">
             <h2>Monthly Revenue Breakdown</h2>
-            <div className="sub">By service line — {labels[0]} – {labels[pidx]} actuals</div>
+            <div className="sub">By service line — {labels[rStart]} – {labels[rEnd]}</div>
             <div className="chart-wrap tall">
               <StackedBarChart
-                labels={labels}
+                labels={rangeLabels}
                 datasets={Object.entries(clientMonthly).map(([label, data], i) => ({
-                  label, data: data.slice(0, N),
+                  label, data: data.slice(rStart, rEnd+1),
                   color: [BLUE, 'rgba(19,144,235,0.5)', GREEN, PURPLE, YELLOW, AMBER][i % 6],
                 }))}
-                statuses={pl.months.map(m => m.status)}
+                statuses={pl.months.slice(rStart, rEnd+1).map(m => m.status)}
               />
             </div>
           </div>
@@ -827,7 +836,11 @@ export default function Dashboard() {
             <h2>Total Spend by Month</h2>
             <div className="sub">COGS + OpEx stacked by category</div>
             <div className="chart-wrap tall">
-              <StackedBarChart labels={labels} datasets={[...cogsChartData, ...opexChartData]} statuses={pl.months.map(m => m.status)} />
+              <StackedBarChart
+                labels={rangeLabels}
+                datasets={[...cogsChartData, ...opexChartData].map(d => ({ ...d, data: d.data.slice(rStart, rEnd+1) }))}
+                statuses={pl.months.slice(rStart, rEnd+1).map(m => m.status)}
+              />
             </div>
           </div>
           <div className="panel" style={{alignSelf:'start'}}>
@@ -884,17 +897,25 @@ export default function Dashboard() {
         <div className="grid-2 gap">
           <div className="panel">
             <h2>Cost of Sales Breakdown</h2>
-            <div className="sub">COGS by category — {labels[0]} – {labels[pidx]}</div>
+            <div className="sub">COGS by category — {labels[rStart]} – {labels[rEnd]}</div>
             <div className="chart-wrap tall">
-              <StackedBarChart labels={labels} datasets={cogsChartData} statuses={pl.months.map(m => m.status)} />
+              <StackedBarChart
+                labels={rangeLabels}
+                datasets={cogsChartData.map(d => ({ ...d, data: d.data.slice(rStart, rEnd+1) }))}
+                statuses={pl.months.slice(rStart, rEnd+1).map(m => m.status)}
+              />
             </div>
             <div className="legend">{cogsChartData.map(d => <div key={d.label} className="legend-item"><div className="legend-dot" style={{background:d.color}} />{d.label}</div>)}</div>
           </div>
           <div className="panel">
             <h2>OpEx Breakdown</h2>
-            <div className="sub">Operating expenses — {labels[0]} – {labels[pidx]}</div>
+            <div className="sub">Operating expenses — {labels[rStart]} – {labels[rEnd]}</div>
             <div className="chart-wrap tall">
-              <StackedBarChart labels={labels} datasets={opexChartData} statuses={pl.months.map(m => m.status)} />
+              <StackedBarChart
+                labels={rangeLabels}
+                datasets={opexChartData.map(d => ({ ...d, data: d.data.slice(rStart, rEnd+1) }))}
+                statuses={pl.months.slice(rStart, rEnd+1).map(m => m.status)}
+              />
             </div>
             <div className="legend">{opexChartData.map(d => <div key={d.label} className="legend-item"><div className="legend-dot" style={{background:d.color}} />{d.label}</div>)}</div>
           </div>
