@@ -54,6 +54,13 @@ export function MonthOverMonthTable({
   const isForecastIso = (iso: string) => !!latestActualIso && iso > latestActualIso;
 
   // In-table category filter (optional).
+  // State model:
+  //   `null`       = no filter applied (all rows shown, implicit "all"). This
+  //                  is the initial state so the table doesn't gate behaviour
+  //                  before the user opens the popover.
+  //   `string[]`   = explicit selection. Empty array = "show none".
+  // This three-state model lets users actually deselect everything and see an
+  // empty table — distinct from the default "all included" view.
   const filterOptions = useMemo(() => {
     if (!filterBy) return [] as string[];
     const set = new Set<string>();
@@ -63,19 +70,32 @@ export function MonthOverMonthTable({
     }
     return [...set].sort();
   }, [rows, filterBy]);
-  const [filterSelected, setFilterSelected] = useState<string[]>([]);
+  const [filterSelected, setFilterSelected] = useState<string[] | null>(null);
   const [filterOpen, setFilterOpen] = useState(false);
   const [filterQuery, setFilterQuery] = useState("");
-  const filterAllSelected =
-    filterOptions.length === 0 || filterSelected.length === 0 || filterSelected.length === filterOptions.length;
-  const filterSelectedSet = useMemo(() => new Set(filterSelected), [filterSelected]);
+  const isImplicitAll = filterSelected === null;
+  const filterSelectedSet = useMemo(
+    () => new Set(filterSelected ?? []),
+    [filterSelected],
+  );
+  const isOptionSelected = (opt: string) =>
+    isImplicitAll ? true : filterSelectedSet.has(opt);
+  const filterCount = isImplicitAll ? filterOptions.length : filterSelected!.length;
+  const filterButtonLabel = isImplicitAll
+    ? `All ${filterOptions.length}`
+    : filterCount === 0
+      ? "None"
+      : `${filterCount} of ${filterOptions.length}`;
   const toggleFilter = (opt: string) => {
-    const current = filterSelected.length === 0 ? [...filterOptions] : [...filterSelected];
+    const current = isImplicitAll ? [...filterOptions] : [...filterSelected!];
     const i = current.indexOf(opt);
     if (i >= 0) current.splice(i, 1);
     else current.push(opt);
-    setFilterSelected(current.length === filterOptions.length ? [] : current);
+    // Don't collapse to "implicit all" automatically — let the user click
+    // "Select all" explicitly so this remains a 3-state model.
+    setFilterSelected(current);
   };
+  const selectOnly = (opt: string) => setFilterSelected([opt]);
   const [globalFilter, setGlobalFilter] = useState("");
   const [sorting, setSorting] = useState<SortingState>([{ id: "total", desc: true }]);
 
@@ -146,12 +166,12 @@ export function MonthOverMonthTable({
 
   // Apply filter-by category before passing to the table.
   const filteredRows = useMemo(() => {
-    if (!filterBy || filterAllSelected) return rows;
+    if (!filterBy || isImplicitAll) return rows;
     return rows.filter(r => {
       const v = r[filterBy.key];
       return v != null && filterSelectedSet.has(v);
     });
-  }, [rows, filterBy, filterAllSelected, filterSelectedSet]);
+  }, [rows, filterBy, isImplicitAll, filterSelectedSet]);
 
   const table = useReactTable({
     data: filteredRows,
@@ -198,24 +218,24 @@ export function MonthOverMonthTable({
                   type="button"
                   className={cn(
                     "inline-flex h-8 items-center gap-1.5 rounded-md border border-[var(--card-border)] bg-white/5 px-2.5 text-[11px] font-medium text-foreground transition hover:border-[var(--blue)]/40 focus:border-[var(--blue)] focus:outline-none",
-                    !filterAllSelected && "border-[var(--blue)]/40 bg-[var(--blue-soft)]/30 text-[var(--blue)]",
+                    !isImplicitAll && filterCount > 0 && "border-[var(--blue)]/40 bg-[var(--blue-soft)]/30 text-[var(--blue)]",
+                    !isImplicitAll && filterCount === 0 && "border-[var(--amber)]/40 bg-[var(--warning-bg)]",
                   )}
+                  style={!isImplicitAll && filterCount === 0 ? { color: "var(--amber)" } : undefined}
                 >
-                  <span className="tabular-nums">
-                    {filterAllSelected ? `All ${filterOptions.length}` : `${filterSelected.length} of ${filterOptions.length}`}
-                  </span>
+                  <span className="tabular-nums">{filterButtonLabel}</span>
                   <ChevronDown className="h-3.5 w-3.5 opacity-60" />
                 </button>
               </Popover.Trigger>
-              {!filterAllSelected && (
+              {!isImplicitAll && (
                 <button
                   type="button"
-                  onClick={() => setFilterSelected([])}
+                  onClick={() => setFilterSelected(null)}
                   className="inline-flex h-8 items-center gap-1 rounded-md border border-[var(--card-border)] px-2 text-[10px] uppercase tracking-[0.08em] text-muted-foreground hover:text-foreground"
                   title="Reset to all"
                 >
                   <X className="h-3 w-3" />
-                  Clear
+                  Reset
                 </button>
               )}
             </div>
@@ -223,7 +243,7 @@ export function MonthOverMonthTable({
               <Popover.Content
                 align="start"
                 sideOffset={6}
-                className="z-50 w-72 rounded-lg border border-white/15 p-2 shadow-2xl"
+                className="z-50 w-80 rounded-lg border border-white/15 p-2 shadow-2xl"
                 style={{ background: "rgba(28, 60, 92, 0.96)", backdropFilter: "blur(10px)" }}
               >
                 <input
@@ -232,26 +252,41 @@ export function MonthOverMonthTable({
                   placeholder={`Search ${filterBy.label.toLowerCase()}…`}
                   className="mb-2 h-7 w-full rounded-md border border-[var(--card-border)] bg-white/5 px-2 text-[12px] text-foreground placeholder:text-muted-foreground/60 focus:border-[var(--blue)] focus:outline-none"
                 />
-                <div className="mb-2 flex items-center justify-between text-[10px] uppercase tracking-[0.08em] text-muted-foreground">
+                <div className="mb-2 flex items-center gap-2 text-[10px] uppercase tracking-[0.08em]">
                   <button
                     type="button"
-                    onClick={() => setFilterSelected([])}
-                    className="hover:text-foreground"
+                    onClick={() => setFilterSelected([...filterOptions])}
+                    className="rounded-md border border-[var(--card-border)] px-2 py-1 text-foreground hover:border-[var(--blue)]/40 hover:bg-white/5"
                   >
                     Select all
                   </button>
+                  <button
+                    type="button"
+                    onClick={() => setFilterSelected([])}
+                    className="rounded-md border border-[var(--card-border)] px-2 py-1 text-foreground hover:border-[var(--amber)]/40 hover:bg-white/5"
+                  >
+                    Select none
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setFilterSelected(null)}
+                    className="ml-auto text-muted-foreground hover:text-foreground"
+                    title="Remove filter (implicit all)"
+                  >
+                    Reset filter
+                  </button>
                 </div>
-                <ul className="max-h-64 overflow-y-auto">
+                <ul className="max-h-72 overflow-y-auto">
                   {filterOptions
                     .filter(o => o.toLowerCase().includes(filterQuery.toLowerCase()))
                     .map(opt => {
-                      const checked = filterAllSelected || filterSelectedSet.has(opt);
+                      const checked = isOptionSelected(opt);
                       return (
-                        <li key={opt}>
+                        <li key={opt} className="group flex items-center gap-1">
                           <button
                             type="button"
                             onClick={() => toggleFilter(opt)}
-                            className="flex w-full items-center gap-2 rounded px-2 py-1.5 text-left text-[12px] text-foreground hover:bg-white/5"
+                            className="flex flex-1 items-center gap-2 rounded px-2 py-1.5 text-left text-[12px] text-foreground hover:bg-white/5"
                           >
                             <span
                               className={cn(
@@ -264,6 +299,14 @@ export function MonthOverMonthTable({
                               {checked && <Check className="h-3 w-3" style={{ color: "var(--blue)" }} />}
                             </span>
                             <span className="truncate">{opt}</span>
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => selectOnly(opt)}
+                            className="invisible mr-1 rounded px-1.5 py-0.5 text-[10px] uppercase tracking-[0.08em] text-muted-foreground hover:bg-white/5 hover:text-[var(--blue)] group-hover:visible"
+                            title={`Show only "${opt}"`}
+                          >
+                            Only
                           </button>
                         </li>
                       );
@@ -326,8 +369,10 @@ export function MonthOverMonthTable({
             ))}
             {table.getRowModel().rows.length === 0 && (
               <tr>
-                <td colSpan={columns.length} className="px-3 py-6 text-center text-muted-foreground">
-                  No matching rows
+                <td colSpan={columns.length} className="px-3 py-8 text-center text-muted-foreground">
+                  {filterBy && !isImplicitAll && filterSelected!.length === 0
+                    ? `No ${filterBy.label.toLowerCase()} selected — open the filter to pick at least one, or hit Reset.`
+                    : "No matching rows"}
                 </td>
               </tr>
             )}
