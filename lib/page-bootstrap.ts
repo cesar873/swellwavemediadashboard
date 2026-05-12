@@ -7,6 +7,7 @@ export type PageSearchParams = {
   from?: string;
   to?: string;
   months?: string;
+  month?: string;
 };
 
 export interface BootstrappedPage {
@@ -24,6 +25,12 @@ export interface BootstrappedPage {
   rangeLabel: string;
   /** First index in selectedMonths that is a forecast month, or -1 if none. */
   forecastStartInSelection: number;
+  /** Single-month picker (independent of from/to). Defaults to latestActualIso. */
+  selectedMonthIso: string;
+  selectedMonthLabel: string;
+  selectedMonthIndex: number;           // index into data.pl.months; -1 if absent
+  priorMonthIndex: number;              // single month immediately before; -1 if none
+  selectedMonthIsForecast: boolean;
 }
 
 // Parse URL filters and return everything every page needs.
@@ -53,6 +60,13 @@ export async function bootstrapPage(
     iso => iso > win.latestActualIso,
   );
 
+  // Single-month resolution.
+  const selectedMonthIndex = monthLabels.indexOf(range.selectedMonthIso);
+  const priorMonthIndex = selectedMonthIndex > 0 ? selectedMonthIndex - 1 : -1;
+  const selectedMonthLabel = range.selectedMonthIso ? isoToLabel(range.selectedMonthIso) : "—";
+  const selectedMonthIsForecast =
+    !!range.selectedMonthIso && range.selectedMonthIso > win.latestActualIso;
+
   return {
     data,
     monthsIso: win.monthsIso,
@@ -67,6 +81,11 @@ export async function bootstrapPage(
     periodLabel: pl,
     rangeLabel,
     forecastStartInSelection,
+    selectedMonthIso: range.selectedMonthIso,
+    selectedMonthLabel,
+    selectedMonthIndex,
+    priorMonthIndex,
+    selectedMonthIsForecast,
   };
 }
 

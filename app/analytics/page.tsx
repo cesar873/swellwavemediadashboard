@@ -23,7 +23,7 @@ interface Props {
 export default async function AnalyticsPage({ searchParams }: Props) {
   const sp = await searchParams;
   const boot = await bootstrapPage(sp);
-  const { data, selectedIndices, priorIndices, monthsIso, latestActualIso, fromIso, toIso, monthsParam, periodLabel, forecastStartInSelection } = boot;
+  const { data, selectedIndices, priorIndices, monthsIso, latestActualIso, fromIso, toIso, monthsParam, periodLabel, forecastStartInSelection, selectedMonthIso } = boot;
   const hasForecast = forecastStartInSelection >= 0;
   const m = data.metrics;
 
@@ -50,6 +50,7 @@ export default async function AnalyticsPage({ searchParams }: Props) {
           fromIso={fromIso}
           toIso={toIso}
           monthsParam={monthsParam}
+          selectedMonthIso={selectedMonthIso}
         />
       </Suspense>
 

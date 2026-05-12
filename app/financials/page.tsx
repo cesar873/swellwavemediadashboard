@@ -4,6 +4,7 @@ import { GlobalFiltersBar } from "@/components/layout/GlobalFiltersBar";
 import { LiveFooter } from "@/components/layout/LiveFooter";
 import { KpiStat } from "@/components/ui/KpiStat";
 import { CardShell } from "@/components/ui/CardShell";
+import { SectionTitle } from "@/components/ui/SectionTitle";
 import { WhatToDoNext, type Insight } from "@/components/insights/WhatToDoNext";
 import { MultiLineChart } from "@/components/charts/MultiLineChart";
 import { PnlTable, type PnlGroup, type PnlTotalsRow } from "@/components/tables/PnlTable";
@@ -25,10 +26,42 @@ interface Props {
 export default async function FinancialsPage({ searchParams }: Props) {
   const sp = await searchParams;
   const boot = await bootstrapPage(sp);
-  const { data, selectedIndices, priorIndices, monthsIso, latestActualIso, fromIso, toIso, monthsParam, periodLabel, rangeLabel, forecastStartInSelection } = boot;
+  const { data, selectedIndices, priorIndices, monthsIso, latestActualIso, fromIso, toIso, monthsParam, periodLabel, rangeLabel, forecastStartInSelection, selectedMonthIso, selectedMonthIndex, priorMonthIndex, selectedMonthLabel, selectedMonthIsForecast } = boot;
   const hasForecast = forecastStartInSelection >= 0;
 
-  // ── KPI numbers ──────────────────────────────────────────────────────────
+  // ── Single-month snapshot ────────────────────────────────────────────────
+  const m = selectedMonthIndex;
+  const pm = priorMonthIndex;
+  const at = (arr: number[], i: number) => (i >= 0 ? arr[i] ?? 0 : 0);
+  const mRev   = at(data.pl.revenue, m);
+  const mCogs  = at(data.pl.cogs, m);
+  const mOpex  = at(data.pl.opex, m);
+  const mNet   = at(data.pl.netIncome, m);
+  const mOpProfit = mRev - mCogs - mOpex;
+  const mGrossM = mRev > 0 ? (mRev - mCogs) / mRev : 0;
+  const mOpM    = mRev > 0 ? mOpProfit / mRev : 0;
+  const mNetM   = mRev > 0 ? mNet / mRev : 0;
+
+  const mRevP   = at(data.pl.revenue, pm);
+  const mCogsP  = at(data.pl.cogs, pm);
+  const mOpexP  = at(data.pl.opex, pm);
+  const mNetP   = at(data.pl.netIncome, pm);
+  const mOpProfitP = mRevP - mCogsP - mOpexP;
+  const mGrossMP = mRevP > 0 ? (mRevP - mCogsP) / mRevP : 0;
+  const mOpMP    = mRevP > 0 ? mOpProfitP / mRevP : 0;
+  const mNetMP   = mRevP > 0 ? mNetP / mRevP : 0;
+
+  const hasMonthPrior = pm >= 0;
+  const monthDeltaLabel = hasMonthPrior
+    ? `vs ${isoToLabel(monthsIso[pm] ?? "")}`
+    : "no prior month";
+
+  const mOpProfitTone: Tone = mOpProfit > 0 ? "success" : mOpProfit < 0 ? "danger" : "neutral";
+  const mGrossTone:    Tone = mGrossM >= 0.5 ? "success" : mGrossM >= 0.3 ? "warning" : "danger";
+  const mOpTone:       Tone = mOpM    >= 0.15 ? "success" : mOpM    >= 0.05 ? "warning" : "danger";
+  const mNetTone:      Tone = mNetM   >= 0.15 ? "success" : mNetM   >= 0    ? "warning" : "danger";
+
+  // ── Range KPI numbers ────────────────────────────────────────────────────
   const rev   = sumAt(data.pl.revenue, selectedIndices);
   const cogs  = sumAt(data.pl.cogs, selectedIndices);
   const opex  = sumAt(data.pl.opex, selectedIndices);
@@ -228,6 +261,7 @@ export default async function FinancialsPage({ searchParams }: Props) {
           fromIso={fromIso}
           toIso={toIso}
           monthsParam={monthsParam}
+          selectedMonthIso={selectedMonthIso}
         />
       </Suspense>
 
@@ -241,6 +275,50 @@ export default async function FinancialsPage({ searchParams }: Props) {
 
         <WhatToDoNext periodLabel={periodLabel.toUpperCase()} insights={insights} />
 
+        <SectionTitle label={`Month snapshot · ${selectedMonthLabel}`} hint={selectedMonthIsForecast ? "forecast month" : undefined} />
+        <section className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
+          <KpiStat
+            label="Revenue"
+            value={formatCurrency(mRev, { compact: true })}
+            delta={hasMonthPrior ? deltaPct(mRev, mRevP) : null}
+            deltaLabel={monthDeltaLabel}
+            size="sm"
+          />
+          <KpiStat
+            label="Operating Profit"
+            value={formatCurrency(mOpProfit, { compact: true })}
+            tone={mOpProfitTone}
+            delta={hasMonthPrior ? deltaPct(mOpProfit, mOpProfitP) : null}
+            deltaLabel={monthDeltaLabel}
+            size="sm"
+          />
+          <KpiStat
+            label="Gross Margin"
+            value={formatPercent(mGrossM)}
+            tone={mGrossTone}
+            delta={hasMonthPrior ? mGrossM - mGrossMP : null}
+            deltaLabel={monthDeltaLabel}
+            size="sm"
+          />
+          <KpiStat
+            label="Operating Margin"
+            value={formatPercent(mOpM)}
+            tone={mOpTone}
+            delta={hasMonthPrior ? mOpM - mOpMP : null}
+            deltaLabel={monthDeltaLabel}
+            size="sm"
+          />
+          <KpiStat
+            label="Net Margin"
+            value={formatPercent(mNetM)}
+            tone={mNetTone}
+            delta={hasMonthPrior ? mNetM - mNetMP : null}
+            deltaLabel={monthDeltaLabel}
+            size="sm"
+          />
+        </section>
+
+        <SectionTitle label={`Range · ${periodLabel}`} className="mt-6" />
         <section className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
           <KpiStat
             label="Revenue"

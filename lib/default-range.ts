@@ -50,11 +50,14 @@ export interface ResolvedRange {
   toIso: string;
   selectedMonths: string[];
   monthsParam: number | null;   // for "?months=N" shortcut
+  /** Independent single-month picker. Defaults to latestActualIso, never
+   *  clamped by from/to — month-snapshot cards are decoupled from the range. */
+  selectedMonthIso: string;
 }
 
 export function resolveRange(
   win: DataWindow,
-  params: { from?: string; to?: string; months?: string },
+  params: { from?: string; to?: string; months?: string; month?: string },
 ): ResolvedRange {
   const minIso = win.firstDataIso;
   // Phase 2: picker max extends to the latest month in the sheet (incl. forecasts).
@@ -100,7 +103,14 @@ export function resolveRange(
     compareIso(iso, fromIso) >= 0 && compareIso(iso, toIso) <= 0,
   );
 
-  return { fromIso, toIso, selectedMonths, monthsParam };
+  // Single-month picker — independent from from/to, defaults to latestActualIso.
+  const monthParamIso =
+    params.month && isValidIso(params.month) && win.monthsIso.includes(params.month)
+      ? params.month
+      : "";
+  const selectedMonthIso = monthParamIso || win.latestActualIso || (win.monthsIso[win.monthsIso.length - 1] ?? "");
+
+  return { fromIso, toIso, selectedMonths, monthsParam, selectedMonthIso };
 }
 
 function isValidIso(s: string): boolean {

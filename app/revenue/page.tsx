@@ -4,6 +4,7 @@ import { GlobalFiltersBar } from "@/components/layout/GlobalFiltersBar";
 import { LiveFooter } from "@/components/layout/LiveFooter";
 import { KpiStat } from "@/components/ui/KpiStat";
 import { CardShell } from "@/components/ui/CardShell";
+import { SectionTitle } from "@/components/ui/SectionTitle";
 import { WhatToDoNext, type Insight } from "@/components/insights/WhatToDoNext";
 import { StackedBarChart } from "@/components/charts/StackedBarChart";
 import { RankedBarChart } from "@/components/charts/RankedBarChart";
@@ -25,7 +26,7 @@ interface Props {
 export default async function RevenuePage({ searchParams }: Props) {
   const sp = await searchParams;
   const boot = await bootstrapPage(sp);
-  const { data, selectedIndices, priorIndices, monthsIso, latestActualIso, fromIso, toIso, monthsParam, periodLabel, selectedMonths, forecastStartInSelection } = boot;
+  const { data, selectedIndices, priorIndices, monthsIso, latestActualIso, fromIso, toIso, monthsParam, periodLabel, selectedMonths, forecastStartInSelection, selectedMonthIso, selectedMonthIndex, priorMonthIndex, selectedMonthLabel, selectedMonthIsForecast } = boot;
   const hasForecast = forecastStartInSelection >= 0;
 
   // ── Build clients × month grid in monthIso shape ─────────────────────────
@@ -112,6 +113,28 @@ export default async function RevenuePage({ searchParams }: Props) {
     }
   }
 
+  // ── Single-month snapshot ────────────────────────────────────────────────
+  const mIdx = selectedMonthIndex;
+  const pmIdx = priorMonthIndex;
+  const monthRev = (c: typeof clientRows[number], i: number) => (i >= 0 ? c.monthlyRevenue[i] ?? 0 : 0);
+  const mTotal      = clientRows.reduce((a, c) => a + monthRev(c, mIdx), 0);
+  const mTotalPrior = clientRows.reduce((a, c) => a + monthRev(c, pmIdx), 0);
+  const mActive     = clientRows.filter(c => monthRev(c, mIdx) > 0);
+  const mAvg        = mActive.length ? mTotal / mActive.length : 0;
+  // New clients in selected month: first non-zero month is exactly mIdx
+  const mNewClients = clientRows.filter(c => c.monthlyRevenue.findIndex(v => (v ?? 0) > 0) === mIdx).length;
+  // Single-month top-3 share
+  const mSortedByMonth = [...clientRows].map(c => monthRev(c, mIdx)).sort((a, b) => b - a);
+  const mTop3 = mSortedByMonth.slice(0, 3).reduce((a, v) => a + v, 0);
+  const mTop3Share = mTotal > 0 ? mTop3 / mTotal : 0;
+
+  const hasMonthPrior = pmIdx >= 0;
+  const monthDeltaLabel = hasMonthPrior
+    ? `vs ${(data.pl.months[pmIdx]?.label) ?? "prior month"}`
+    : "no prior month";
+  const monthConcentrationTone: Tone =
+    mTop3Share <= 0.4 ? "success" : mTop3Share <= 0.6 ? "warning" : "danger";
+
   // ── Primary chart: revenue by service line stacked ──────────────────────
   const byService: Record<string, number[]> = {};
   for (const c of clientRows) {
@@ -128,12 +151,14 @@ export default async function RevenuePage({ searchParams }: Props) {
   });
   const stackedSeries = Object.keys(byService).map(svc => ({ key: svc, label: svc }));
 
-  // ── Secondary: breakdown for selected single month (last selected) ──────
-  const lastIdx = selectedIndices[selectedIndices.length - 1];
-  const selectedMonthLabel = data.pl.months[lastIdx]?.label ?? "";
-  const byIndustry = aggForMonth(clientRows, lastIdx, c => c.pod || "Unspecified");
-  const bySource   = aggForMonth(clientRows, lastIdx, c => c.source || "Unspecified");
-  const byPod      = aggForMonth(clientRows, lastIdx, c => c.pod || "Unspecified");
+  // ── Secondary: breakdown for the single-month picker (so the snapshot
+  //    cards and the breakdown cards both reflect the same month).
+  const breakdownIdx = selectedMonthIndex >= 0
+    ? selectedMonthIndex
+    : selectedIndices[selectedIndices.length - 1];
+  const byIndustry = aggForMonth(clientRows, breakdownIdx, c => c.pod || "Unspecified");
+  const bySource   = aggForMonth(clientRows, breakdownIdx, c => c.source || "Unspecified");
+  const byPod      = aggForMonth(clientRows, breakdownIdx, c => c.pod || "Unspecified");
   void byIndustry;
   void byPod;
 
@@ -183,6 +208,7 @@ export default async function RevenuePage({ searchParams }: Props) {
           fromIso={fromIso}
           toIso={toIso}
           monthsParam={monthsParam}
+          selectedMonthIso={selectedMonthIso}
         />
       </Suspense>
 
@@ -196,6 +222,32 @@ export default async function RevenuePage({ searchParams }: Props) {
 
         <WhatToDoNext periodLabel={periodLabel.toUpperCase()} insights={insights} />
 
+        <SectionTitle label={`Month snapshot · ${selectedMonthLabel}`} hint={selectedMonthIsForecast ? "forecast month" : undefined} />
+        <section className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
+          <KpiStat
+            label="Revenue"
+            value={formatCurrency(mTotal, { compact: true })}
+            delta={hasMonthPrior && mTotalPrior > 0 ? (mTotal - mTotalPrior) / mTotalPrior : null}
+            deltaLabel={monthDeltaLabel}
+            size="sm"
+          />
+          <KpiStat label="Active Clients" value={String(mActive.length)} size="sm" />
+          <KpiStat label="Avg Rev / Client" value={formatCurrency(mAvg, { compact: true })} size="sm" />
+          <KpiStat
+            label="New Clients"
+            value={String(mNewClients)}
+            tone={mNewClients > 0 ? "success" : "neutral"}
+            size="sm"
+          />
+          <KpiStat
+            label="Top-3 Share"
+            value={formatPercent(mTop3Share)}
+            tone={monthConcentrationTone}
+            size="sm"
+          />
+        </section>
+
+        <SectionTitle label={`Range · ${periodLabel}`} className="mt-6" />
         <section className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
           <KpiStat
             label="Total Revenue"

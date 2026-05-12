@@ -4,6 +4,7 @@ import { GlobalFiltersBar } from "@/components/layout/GlobalFiltersBar";
 import { LiveFooter } from "@/components/layout/LiveFooter";
 import { KpiStat } from "@/components/ui/KpiStat";
 import { CardShell } from "@/components/ui/CardShell";
+import { SectionTitle } from "@/components/ui/SectionTitle";
 import { WhatToDoNext, type Insight } from "@/components/insights/WhatToDoNext";
 import { StackedBarChart } from "@/components/charts/StackedBarChart";
 import { VerticalBarChart } from "@/components/charts/VerticalBarChart";
@@ -25,9 +26,40 @@ interface Props {
 export default async function ExpensesPage({ searchParams }: Props) {
   const sp = await searchParams;
   const boot = await bootstrapPage(sp);
-  const { data, selectedIndices, priorIndices, monthsIso, latestActualIso, fromIso, toIso, monthsParam, periodLabel, selectedMonths, forecastStartInSelection } = boot;
+  const { data, selectedIndices, priorIndices, monthsIso, latestActualIso, fromIso, toIso, monthsParam, periodLabel, selectedMonths, forecastStartInSelection, selectedMonthIso, selectedMonthIndex, priorMonthIndex, selectedMonthLabel, selectedMonthIsForecast } = boot;
   const hasForecast = forecastStartInSelection >= 0;
 
+  // ── Single-month snapshot ────────────────────────────────────────────────
+  const mIdx = selectedMonthIndex;
+  const pmIdx = priorMonthIndex;
+  const at = (arr: number[], i: number) => (i >= 0 ? arr[i] ?? 0 : 0);
+  const mCogs       = at(data.pl.cogs, mIdx);
+  const mOpex       = at(data.pl.opex, mIdx);
+  const mRev        = at(data.pl.revenue, mIdx);
+  const mSpend      = mCogs + mOpex;
+  const mSpendRatio = mRev > 0 ? mSpend / mRev : 0;
+  const mCogsP      = at(data.pl.cogs, pmIdx);
+  const mOpexP      = at(data.pl.opex, pmIdx);
+  const mSpendP     = mCogsP + mOpexP;
+  const hasMonthPrior = pmIdx >= 0;
+  const monthDeltaLabel = hasMonthPrior
+    ? `vs ${data.pl.months[pmIdx]?.label ?? "prior month"}`
+    : "no prior month";
+  const mErTone: Tone = mSpendRatio <= 0.5 ? "success" : mSpendRatio <= 0.7 ? "warning" : "danger";
+
+  // Distinct vendors in the single selected month
+  const mDistinctVendors = (() => {
+    const set = new Set<string>();
+    const targetIso = selectedMonthIso;
+    for (const t of data.transactions) {
+      if (t.kind !== "Expense") continue;
+      const tIso = monthFromDate(t.date);
+      if (tIso === targetIso && t.vendor) set.add(t.vendor);
+    }
+    return set;
+  })();
+
+  // ── Range KPI numbers (unchanged) ────────────────────────────────────────
   const cogs = sumAt(data.pl.cogs, selectedIndices);
   const opex = sumAt(data.pl.opex, selectedIndices);
   const rev  = sumAt(data.pl.revenue, selectedIndices);
@@ -167,6 +199,7 @@ export default async function ExpensesPage({ searchParams }: Props) {
           fromIso={fromIso}
           toIso={toIso}
           monthsParam={monthsParam}
+          selectedMonthIso={selectedMonthIso}
         />
       </Suspense>
 
@@ -180,6 +213,39 @@ export default async function ExpensesPage({ searchParams }: Props) {
 
         <WhatToDoNext periodLabel={periodLabel.toUpperCase()} insights={insights} />
 
+        <SectionTitle label={`Month snapshot · ${selectedMonthLabel}`} hint={selectedMonthIsForecast ? "forecast month" : undefined} />
+        <section className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
+          <KpiStat
+            label="Total Expenses"
+            value={formatCurrency(mSpend, { compact: true })}
+            delta={hasMonthPrior ? deltaPct(mSpend, mSpendP) : null}
+            deltaLabel={monthDeltaLabel}
+            size="sm"
+          />
+          <KpiStat
+            label="COGS"
+            value={formatCurrency(mCogs, { compact: true })}
+            delta={hasMonthPrior ? deltaPct(mCogs, mCogsP) : null}
+            deltaLabel={monthDeltaLabel}
+            size="sm"
+          />
+          <KpiStat
+            label="OpEx"
+            value={formatCurrency(mOpex, { compact: true })}
+            delta={hasMonthPrior ? deltaPct(mOpex, mOpexP) : null}
+            deltaLabel={monthDeltaLabel}
+            size="sm"
+          />
+          <KpiStat
+            label="Expenses / Revenue"
+            value={formatPercent(mSpendRatio)}
+            tone={mErTone}
+            size="sm"
+          />
+          <KpiStat label="Active Vendors" value={String(mDistinctVendors.size)} size="sm" />
+        </section>
+
+        <SectionTitle label={`Range · ${periodLabel}`} className="mt-6" />
         <section className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
           <KpiStat label="Total Expenses" value={formatCurrency(totalSpend, { compact: true })} delta={deltaPct(totalSpend, totalSpendPrior)} deltaLabel={deltaLabel} size="sm" />
           <KpiStat label="COGS" value={formatCurrency(cogs, { compact: true })} delta={deltaPct(cogs, cogsPrior)} deltaLabel={deltaLabel} size="sm" />

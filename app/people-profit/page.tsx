@@ -25,7 +25,7 @@ interface Props {
 export default async function PeopleProfitPage({ searchParams }: Props) {
   const sp = await searchParams;
   const boot = await bootstrapPage(sp);
-  const { data, monthsIso, latestActualIso, fromIso, toIso, monthsParam, periodLabel } = boot;
+  const { data, monthsIso, latestActualIso, fromIso, toIso, monthsParam, periodLabel, selectedMonthIso } = boot;
   const profitRows = data.teamProfit;
   const teamRoster = data.teamMembers;
 
@@ -47,6 +47,7 @@ export default async function PeopleProfitPage({ searchParams }: Props) {
           fromIso={fromIso}
           toIso={toIso}
           monthsParam={monthsParam}
+          selectedMonthIso={selectedMonthIso}
         />
       </Suspense>
 

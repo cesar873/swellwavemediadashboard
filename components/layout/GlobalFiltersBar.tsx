@@ -12,6 +12,7 @@ export interface GlobalFiltersBarProps {
   fromIso: string;
   toIso: string;
   monthsParam: number | null;    // if user picked "?months=N"
+  selectedMonthIso: string;      // independent single-month snapshot
 }
 
 const MONTH_SHORTCUTS = [1, 3, 6, 12];
@@ -54,6 +55,13 @@ export function GlobalFiltersBar(props: GlobalFiltersBarProps) {
       p.delete("months");
       p.set("to", iso);
       if (!p.get("from")) p.set("from", props.fromIso);
+    });
+  };
+
+  const onPickMonth = (iso: string) => {
+    pushParams(p => {
+      if (iso === props.latestActualIso) p.delete("month");
+      else p.set("month", iso);
     });
   };
 
@@ -132,6 +140,22 @@ export function GlobalFiltersBar(props: GlobalFiltersBarProps) {
             value={props.toIso}
             onChange={e => onPickTo(e.target.value)}
             className="h-7 rounded-md border border-[var(--card-border)] bg-white/5 px-2 text-[11px] tabular-nums text-foreground focus:border-[var(--blue)] focus:outline-none"
+          >
+            {options.map(o => (
+              <option key={o.iso} value={o.iso}>
+                {isoToLabel(o.iso)}{o.isForecast ? " · forecast" : ""}
+              </option>
+            ))}
+          </select>
+        </div>
+
+        <div className="flex items-center gap-1.5">
+          <span className="text-[10px] font-semibold uppercase tracking-[0.12em] text-[color:var(--muted)]">Month</span>
+          <select
+            value={props.selectedMonthIso}
+            onChange={e => onPickMonth(e.target.value)}
+            className="h-7 rounded-md border border-[var(--blue)]/30 bg-[var(--blue-soft)]/20 px-2 text-[11px] font-semibold tabular-nums text-foreground focus:border-[var(--blue)] focus:outline-none"
+            title="Single-month snapshot — drives the month KPI cards"
           >
             {options.map(o => (
               <option key={o.iso} value={o.iso}>

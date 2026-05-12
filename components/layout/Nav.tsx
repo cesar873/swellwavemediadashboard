@@ -15,7 +15,7 @@ const NAV_ITEMS = [
   { href: "/people-profit", label: "People" },
 ];
 
-const GLOBAL_PARAMS = ["months", "from", "to"];
+const GLOBAL_PARAMS = ["months", "from", "to", "month"];
 
 export function Nav() {
   const pathname = usePathname();

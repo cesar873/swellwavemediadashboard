@@ -22,7 +22,7 @@ interface Props {
 export default async function ClientProfitPage({ searchParams }: Props) {
   const sp = await searchParams;
   const boot = await bootstrapPage(sp);
-  const { data, monthsIso, latestActualIso, fromIso, toIso, monthsParam, periodLabel } = boot;
+  const { data, monthsIso, latestActualIso, fromIso, toIso, monthsParam, periodLabel, selectedMonthIso } = boot;
 
   // ── Client profit rows are sheet-wide totals (one row per client) ───────
   const rows = data.clientProfits.filter(c => c.client && c.client !== "Client");
@@ -105,6 +105,7 @@ export default async function ClientProfitPage({ searchParams }: Props) {
           fromIso={fromIso}
           toIso={toIso}
           monthsParam={monthsParam}
+          selectedMonthIso={selectedMonthIso}
         />
       </Suspense>
 
