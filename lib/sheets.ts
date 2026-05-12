@@ -1,5 +1,5 @@
 import { google } from 'googleapis';
-import type { DashboardData, PLData, ExpenseCategory, COGSCategory, ClientRow, ClientProfit, TeamMember, ServiceCapacity, Transaction, BudgetRow } from './types';
+import type { DashboardData, PLData, ExpenseCategory, COGSCategory, ClientRow, ClientProfit, TeamMember, TeamProfitRow, ServiceCapacity, Transaction, BudgetRow, MetricsData } from './types';
 
 const SPREADSHEET_ID = '1JkaZ1qfrWqEwmSmG-sjdgQ0a3ZaQHtD5zl_RgehqdeY';
 
@@ -379,6 +379,79 @@ export async function fetchDashboardData(): Promise<DashboardData> {
     }
   }
 
+  // ── Metrics (Phase 2) ─────────────────────────────────────────────────────
+  // Look for a tab named "Metrics" (case-insensitive). If absent, all metric
+  // arrays stay undefined and the Analytics page renders its empty state.
+  const metricsGrid = allGrids.find(g => g.title.toLowerCase() === 'metrics')?.grid ?? [];
+  const metrics: MetricsData = {};
+  if (metricsGrid.length > 1) {
+    const pick = (...labels: string[]): number[] | undefined => {
+      for (const label of labels) {
+        const found = findRow(metricsGrid, label);
+        if (found) {
+          const vals = numericValues(found.row, N);
+          // Treat percent rows: if every non-zero value is > 1, divide by 100.
+          const nonZero = vals.filter(v => v !== 0);
+          const allLookLikePct = nonZero.length > 0 && nonZero.every(v => Math.abs(v) > 1 && Math.abs(v) <= 100);
+          const isPct = /churn|rate|margin/i.test(label);
+          return isPct && allLookLikePct ? vals.map(v => v / 100) : vals;
+        }
+      }
+      return undefined;
+    };
+    metrics.mrr           = pick('MRR', 'Monthly Recurring Revenue');
+    metrics.ltv           = pick('LTV', 'Lifetime Value');
+    metrics.ltgp          = pick('LTGP', 'Lifetime Gross Profit');
+    metrics.cac           = pick('CAC', 'Customer Acquisition Cost');
+    metrics.mrrChurn      = pick('MRR Churn', 'Revenue Churn');
+    metrics.clientChurn   = pick('Client Churn', 'Logo Churn', 'Customer Churn');
+    metrics.newClients    = pick('New Clients', 'Signed', 'New Customers');
+    metrics.lostClients   = pick('Lost Clients', 'Lost', 'Churned Clients');
+    metrics.activeClients = pick('Active Clients', 'Total Clients');
+  }
+
+  // ── Team Profit (Phase 3) ─────────────────────────────────────────────────
+  // Looks for a header row with Name + Revenue Covered (+ Utilization).
+  // If absent, returns empty and the People page renders its empty state.
+  const teamProfit: TeamProfitRow[] = [];
+  let teamProfitHit: { grid: Grid; row: Row; idx: number } | null = null;
+  for (const g of allGrids) {
+    const hit =
+      findRow(g.grid, 'Name', 'Revenue Covered') ??
+      findRow(g.grid, 'Team Member', 'Revenue Covered');
+    if (hit) { teamProfitHit = { grid: g.grid, row: hit.row, idx: hit.idx }; break; }
+  }
+  if (teamProfitHit) {
+    const grid = teamProfitHit.grid;
+    const hdr = teamProfitHit.row;
+    const col = (key: string) => hdr.findIndex(c => parseStr(c).toLowerCase().includes(key.toLowerCase()));
+    const iName = col('Name') >= 0 ? col('Name') : col('Team Member');
+    const iDept = col('Department');
+    const iHrs  = col('Hours Available') >= 0 ? col('Hours Available') : col('Hours');
+    const iRev  = col('Revenue Covered');
+    const iUtl  = col('Utilization');
+    const iTgt  = col('vs Target');
+    const iGap  = col('Revenue Gap');
+    for (let r = teamProfitHit.idx + 1; r < grid.length; r++) {
+      const row = grid[r];
+      const name = iName >= 0 ? parseStr(row[iName]) : '';
+      if (!name || /^total\b/i.test(name)) continue;
+      const utlRaw = iUtl >= 0 ? parseStr(row[iUtl]) : '';
+      const tgtRaw = iTgt >= 0 ? parseStr(row[iTgt]) : '';
+      const utilization = utlRaw.includes('%') ? parseFloat(utlRaw) / 100 : parseNum(utlRaw);
+      const vsTarget    = tgtRaw.includes('%') ? parseFloat(tgtRaw) / 100 : parseNum(tgtRaw);
+      teamProfit.push({
+        name,
+        department:     iDept >= 0 ? parseStr(row[iDept]) : '',
+        hoursAvailable: iHrs  >= 0 ? parseNum(row[iHrs])  : 0,
+        revenueCovered: iRev  >= 0 ? parseNum(row[iRev])  : 0,
+        utilization:    Math.abs(utilization) > 1 ? utilization / 100 : utilization,
+        vsTarget:       Math.abs(vsTarget) > 1 ? vsTarget / 100 : vsTarget,
+        revenueGap:     iGap  >= 0 ? parseNum(row[iGap])  : 0,
+      });
+    }
+  }
+
   return {
     lastUpdated: new Date().toISOString(),
     pl,
@@ -387,8 +460,10 @@ export async function fetchDashboardData(): Promise<DashboardData> {
     clients: clientRows,
     clientProfits,
     teamMembers,
+    teamProfit,
     serviceCapacity,
     transactions,
     budget,
+    metrics,
   };
 }

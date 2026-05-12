@@ -88,6 +88,31 @@ export interface Transaction {
   amount: number;          // always positive
 }
 
+// Phase 2 — unit economics (one value per month, aligned to pl.months order).
+export interface MetricsData {
+  mrr?: number[];
+  ltv?: number[];
+  ltgp?: number[];
+  cac?: number[];
+  mrrChurn?: number[];       // 0..1
+  clientChurn?: number[];    // 0..1
+  newClients?: number[];
+  lostClients?: number[];
+  activeClients?: number[];
+}
+
+// Phase 3 — per-person rollup (one row per person, sheet-wide totals or
+// last-month snapshot, depending on what the sheet provides).
+export interface TeamProfitRow {
+  name: string;
+  department: string;
+  hoursAvailable: number;
+  revenueCovered: number;
+  utilization: number;       // 0..1
+  vsTarget: number;          // 0..1, can be negative (under) or positive (over)
+  revenueGap: number;        // negative = below target, positive = surplus
+}
+
 export interface DashboardData {
   lastUpdated: string;
   pl: PLData;
@@ -96,7 +121,9 @@ export interface DashboardData {
   clients: ClientRow[];
   clientProfits: ClientProfit[];
   teamMembers: TeamMember[];
+  teamProfit: TeamProfitRow[];
   serviceCapacity: ServiceCapacity[];
   transactions: Transaction[];
   budget: BudgetRow[];
+  metrics: MetricsData;
 }

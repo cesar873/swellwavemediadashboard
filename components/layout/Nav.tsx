@@ -4,13 +4,15 @@ import Link from "next/link";
 import { usePathname, useSearchParams } from "next/navigation";
 import { cn } from "@/lib/utils";
 
-// formatting.md §1.5 — top navigation. Phase 1 = Financials · Revenue · Expenses
-// + Clients (Phase 3 table-only, no drilldown). Add Analytics + People when their data lands.
+// formatting.md §1.5 + tabs.md §"Navigation order" — all phases enabled.
+// Tabs that lack data render an explicit empty state, not em-dashes.
 const NAV_ITEMS = [
   { href: "/financials",    label: "Financials" },
   { href: "/revenue",       label: "Revenue" },
   { href: "/expenses",      label: "Expenses" },
+  { href: "/analytics",     label: "Analytics" },
   { href: "/client-profit", label: "Clients" },
+  { href: "/people-profit", label: "People" },
 ];
 
 const GLOBAL_PARAMS = ["months", "from", "to"];
