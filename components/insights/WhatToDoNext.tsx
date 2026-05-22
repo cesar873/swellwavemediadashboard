@@ -47,7 +47,7 @@ export function WhatToDoNext({ periodLabel, insights, className }: WhatToDoNextP
           INSIGHTS
         </span>
         <h2 className="anton text-[18px] tracking-[0.08em] text-foreground">
-          {periodLabel} · What to do next
+          What to do next · {periodLabel}
         </h2>
       </div>
       <ul className="flex flex-col gap-2.5">

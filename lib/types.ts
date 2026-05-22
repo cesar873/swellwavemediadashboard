@@ -93,14 +93,32 @@ export interface Transaction {
   amount: number;          // always positive
 }
 
-// Phase 2 — unit economics (one value per month, aligned to pl.months order).
+// Phase 2 — unit economics.
+// Typed shortcut arrays are re-aligned to pl.months order so the rest of the
+// dashboard can index them by the same indices it uses for revenue/cogs/etc.
+// The generic metricRows / metricMonths fields preserve the Metrics tab's own
+// month layout for the analytics page table + charts.
+export interface MetricRow {
+  name: string;
+  rawStrings: string[];                       // display strings as they appear in the sheet
+  values: number[];                           // parsed numbers (percent rows are stored as 0..1)
+  format: 'currency' | 'percent' | 'number';  // detected from rawStrings
+}
+
 export interface MetricsData {
+  // Generic capture — used by the Analytics table + counting toggle.
+  metricRows: MetricRow[];
+  metricMonths: string[];        // raw labels, e.g. "Jan 25"
+  metricMonthsIso: string[];     // iso, e.g. "2025-01-01"
+  metricStatuses: string[];      // "Actuals" | "Forecast" per metric month
+
+  // Typed shortcuts — aligned to pl.months order (NOT metricMonths).
   mrr?: number[];
   ltv?: number[];
   ltgp?: number[];
   cac?: number[];
-  mrrChurn?: number[];       // 0..1
-  clientChurn?: number[];    // 0..1
+  mrrChurn?: number[];           // 0..1
+  clientChurn?: number[];        // 0..1
   newClients?: number[];
   lostClients?: number[];
   activeClients?: number[];

@@ -3,6 +3,21 @@ import type { DashboardData, PLData, ExpenseCategory, COGSCategory, ClientRow, C
 
 const SPREADSHEET_ID = '1JkaZ1qfrWqEwmSmG-sjdgQ0a3ZaQHtD5zl_RgehqdeY';
 
+// Local copy of labelToIso to avoid importing /lib/period.ts (which imports
+// types that aren't safe to cross-import at this layer).
+const MON_TO_NUM: Record<string, number> = {
+  jan: 1, feb: 2, mar: 3, apr: 4, may: 5, jun: 6,
+  jul: 7, aug: 8, sep: 9, oct: 10, nov: 11, dec: 12,
+};
+function labelToIsoLocal(label: string): string {
+  if (!label) return '';
+  const m = label.toLowerCase().match(/(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\s*(20\d{2})/);
+  if (!m) return '';
+  const month = MON_TO_NUM[m[1]];
+  const year = parseInt(m[2], 10);
+  return `${year}-${String(month).padStart(2, '0')}-01`;
+}
+
 // ── Auth ──────────────────────────────────────────────────────────────────────
 function getAuth() {
   const key = process.env.GOOGLE_SERVICE_ACCOUNT_KEY;
@@ -385,34 +400,120 @@ export async function fetchDashboardData(): Promise<DashboardData> {
   }
 
   // ── Metrics (Phase 2) ─────────────────────────────────────────────────────
-  // Look for a tab named "Metrics" (case-insensitive). If absent, all metric
-  // arrays stay undefined and the Analytics page renders its empty state.
+  // Look for a tab named "Metrics" (case-insensitive). The Metrics tab has its
+  // own month columns and rows for every metric the operator tracks. We capture
+  // ALL rows generically so the Analytics table can show every metric, and we
+  // also expose typed shortcuts for the most common fields.
   const metricsGrid = allGrids.find(g => g.title.toLowerCase() === 'metrics')?.grid ?? [];
-  const metrics: MetricsData = {};
+  const metrics: MetricsData = {
+    metricRows: [],
+    metricMonths: [],
+    metricMonthsIso: [],
+    metricStatuses: [],
+  };
+
   if (metricsGrid.length > 1) {
-    const pick = (...labels: string[]): number[] | undefined => {
-      for (const label of labels) {
-        const found = findRow(metricsGrid, label);
-        if (found) {
-          const vals = numericValues(found.row, N);
-          // Treat percent rows: if every non-zero value is > 1, divide by 100.
-          const nonZero = vals.filter(v => v !== 0);
-          const allLookLikePct = nonZero.length > 0 && nonZero.every(v => Math.abs(v) > 1 && Math.abs(v) <= 100);
-          const isPct = /churn|rate|margin/i.test(label);
-          return isPct && allLookLikePct ? vals.map(v => v / 100) : vals;
-        }
+    // 1. Find the month header row in the Metrics tab (its own columns).
+    let metricMonthRow: Row = [];
+    let metricMonthRowIdx = -1;
+    let bestMatches = 0;
+    for (let i = 0; i < metricsGrid.length; i++) {
+      const row = metricsGrid[i];
+      const matches = row.filter(c => MON_RE.test(parseStr(c)));
+      if (matches.length > bestMatches) {
+        bestMatches = matches.length;
+        metricMonthRow = row;
+        metricMonthRowIdx = i;
+      }
+    }
+    // Build a list of {col, label} for every cell in the header that is a month.
+    const metricMonthCells: { col: number; label: string }[] = [];
+    metricMonthRow.forEach((c, i) => {
+      const s = parseStr(c);
+      if (MON_RE.test(s)) metricMonthCells.push({ col: i, label: s });
+    });
+    const metricMonths = metricMonthCells.map(c => c.label);
+    const metricMonthsIso = metricMonths.map(l => labelToIsoLocal(l));
+
+    // 2. Optional Status row (Actuals / Forecast) — same column layout as months.
+    const metricStatusFound = findRow(metricsGrid, 'Status');
+    const metricStatuses: string[] = metricMonthCells.map(c => {
+      const s = metricStatusFound ? parseStr(metricStatusFound.row[c.col]) : '';
+      return s === 'Forecast' ? 'Forecast' : 'Actuals';
+    });
+
+    // 3. Collect every data row in the Metrics tab (skip the month header itself,
+    // the Status row, and any blank label).
+    const SKIP_NAME = /^(status|month|metric|metrics)$/i;
+    const metricRows: { name: string; rawStrings: string[]; values: number[]; format: 'currency' | 'percent' | 'number' }[] = [];
+    for (let r = 0; r < metricsGrid.length; r++) {
+      if (r === metricMonthRowIdx) continue;
+      if (metricStatusFound && r === metricStatusFound.idx) continue;
+      const row = metricsGrid[r] || [];
+      const name = parseStr(row[0]);
+      if (!name) continue;
+      if (SKIP_NAME.test(name)) continue;
+      // Pull the raw display string + parsed number for each month column.
+      const rawStrings = metricMonthCells.map(c => parseStr(row[c.col]));
+      // Skip rows that are entirely empty across months.
+      if (rawStrings.every(s => s === '')) continue;
+      const values = rawStrings.map(s => parseNum(s));
+      // Detect format from the raw strings.
+      const hasPct = rawStrings.some(s => /%$/.test(s));
+      const hasCurrency = rawStrings.some(s => /^\(?\$|\$$|[KkMm]$/.test(s));
+      let format: 'currency' | 'percent' | 'number' = 'number';
+      if (hasPct) format = 'percent';
+      else if (hasCurrency) format = 'currency';
+      // If percent and the raw values look like "18.4%", store as 0.184.
+      const finalValues = format === 'percent'
+        ? values.map(v => (Math.abs(v) > 1 ? v / 100 : v))
+        : values;
+      metricRows.push({ name, rawStrings, values: finalValues, format });
+    }
+
+    metrics.metricRows = metricRows;
+    metrics.metricMonths = metricMonths;
+    metrics.metricMonthsIso = metricMonthsIso;
+    metrics.metricStatuses = metricStatuses;
+
+    // 4. Typed shortcuts — look up by name, case-insensitive exact match first,
+    // then fall back to "contains". Returns the values aligned to PL months
+    // (re-aligning by month label) so the rest of the dashboard stays consistent.
+    const findMetric = (...candidates: string[]): { name: string; values: number[]; format: string } | undefined => {
+      for (const cand of candidates) {
+        const exact = metricRows.find(r => r.name.toLowerCase() === cand.toLowerCase());
+        if (exact) return exact;
+      }
+      for (const cand of candidates) {
+        const partial = metricRows.find(r => r.name.toLowerCase().includes(cand.toLowerCase()));
+        if (partial) return partial;
       }
       return undefined;
     };
-    metrics.mrr           = pick('MRR', 'Monthly Recurring Revenue');
-    metrics.ltv           = pick('LTV', 'Lifetime Value');
-    metrics.ltgp          = pick('LTGP', 'Lifetime Gross Profit');
-    metrics.cac           = pick('CAC', 'Customer Acquisition Cost');
-    metrics.mrrChurn      = pick('MRR Churn', 'Revenue Churn');
-    metrics.clientChurn   = pick('Client Churn', 'Logo Churn', 'Customer Churn');
-    metrics.newClients    = pick('New Clients', 'Signed', 'New Customers');
-    metrics.lostClients   = pick('Lost Clients', 'Lost', 'Churned Clients');
-    metrics.activeClients = pick('Active Clients', 'Total Clients');
+
+    // Re-align a Metrics-tab series to the PL-month order.
+    const alignToPl = (values: number[]): number[] => {
+      return months.map(m => {
+        const iso = labelToIsoLocal(m.label);
+        const idx = metricMonthsIso.indexOf(iso);
+        return idx >= 0 ? values[idx] ?? 0 : 0;
+      });
+    };
+
+    const pickAligned = (...candidates: string[]) => {
+      const found = findMetric(...candidates);
+      return found ? alignToPl(found.values) : undefined;
+    };
+
+    metrics.mrr           = pickAligned('MRR', 'Monthly Recurring Revenue');
+    metrics.ltv           = pickAligned('Unique Client LTV', 'LTV', 'Lifetime Value');
+    metrics.ltgp          = pickAligned('LTGP', 'Lifetime Gross Profit');
+    metrics.cac           = pickAligned('Unique Client CAC', 'CAC', 'Customer Acquisition Cost');
+    metrics.mrrChurn      = pickAligned('MRR Churn', 'Revenue Churn');
+    metrics.clientChurn   = pickAligned('Unique Client Churn', 'Client Churn', 'Logo Churn', 'Customer Churn');
+    metrics.newClients    = pickAligned('Unique Clients Signed', 'Clients Signed', 'New Clients', 'Signed', 'New Customers');
+    metrics.lostClients   = pickAligned('Unique Clients Lost', 'Clients Lost', 'Lost Clients', 'Lost', 'Churned Clients');
+    metrics.activeClients = pickAligned('Total Unique Clients', 'Active Clients', 'Total Clients');
   }
 
   // ── Team Profit (Phase 3) ─────────────────────────────────────────────────
