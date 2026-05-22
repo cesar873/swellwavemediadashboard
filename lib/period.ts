@@ -18,10 +18,12 @@ const MONTH_ABBR = [
 
 export function labelToIso(label: string): string | null {
   if (!label) return null;
-  const m = label.toLowerCase().match(/(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\s*(20\d{2})/);
+  // Accept "Jan 25", "Jan '25", "Jan 2025", "Jan. 2025".
+  const m = label.toLowerCase().match(/(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\.?\s*'?(\d{2,4})/);
   if (!m) return null;
   const month = MONTH_MAP[m[1]];
-  const year = parseInt(m[2], 10);
+  let year = parseInt(m[2], 10);
+  if (year < 100) year += 2000;
   return `${year}-${String(month + 1).padStart(2, "0")}-01`;
 }
 

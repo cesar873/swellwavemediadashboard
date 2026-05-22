@@ -11,10 +11,12 @@ const MON_TO_NUM: Record<string, number> = {
 };
 function labelToIsoLocal(label: string): string {
   if (!label) return '';
-  const m = label.toLowerCase().match(/(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\s*(20\d{2})/);
+  // Accept both 2-digit ("Jan 25", "Jan '25") and 4-digit ("Jan 2025") years.
+  const m = label.toLowerCase().match(/(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\.?\s*'?(\d{2,4})/);
   if (!m) return '';
   const month = MON_TO_NUM[m[1]];
-  const year = parseInt(m[2], 10);
+  let year = parseInt(m[2], 10);
+  if (year < 100) year += 2000;
   return `${year}-${String(month).padStart(2, '0')}-01`;
 }
 
@@ -114,7 +116,9 @@ export async function fetchDashboardData(): Promise<DashboardData> {
 
   // 6. Determine months — scan every row in plGrid looking for the one that has
   //    the most cells matching "Mon YYYY" (e.g. "Jan 2026", "Feb 2026").
-  const MON_RE = /^(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec).{0,5}20\d\d/i;
+  // Match month labels with either 2-digit ("Jan 25") or 4-digit ("Jan 2025")
+  // years. The PL tab uses 4-digit; the Metrics tab uses 2-digit.
+  const MON_RE = /^(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\.?\s*'?(\d{2}|20\d{2})\b/i;
   let bestMonthRow: Row = [];
   let bestMonthCount = 0;
   for (const row of plGrid) {
