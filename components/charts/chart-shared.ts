@@ -60,11 +60,17 @@ export const PALETTE_GREEN = [
   "#dcfce7",
 ];
 
-export type ChartFormat = "currency" | "percent" | "number";
+export type ChartFormat = "currency" | "percent" | "number" | "decimal";
 
 export function formatCompact(n: number, kind: ChartFormat = "currency"): string {
   if (!isFinite(n)) return "—";
   if (kind === "percent") return `${(n * 100).toFixed(0)}%`;
+  if (kind === "decimal") {
+    const abs = Math.abs(n);
+    if (abs >= 1_000_000) return `${(n / 1_000_000).toFixed(2)}M`;
+    if (abs >= 1_000)     return `${(n / 1_000).toFixed(2)}K`;
+    return n.toFixed(2);
+  }
   if (kind === "number") {
     const abs = Math.abs(n);
     if (abs >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
@@ -81,6 +87,9 @@ export function formatCompact(n: number, kind: ChartFormat = "currency"): string
 export function formatLong(n: number, kind: ChartFormat = "currency"): string {
   if (!isFinite(n)) return "—";
   if (kind === "percent") return `${(n * 100).toFixed(1)}%`;
+  if (kind === "decimal") {
+    return new Intl.NumberFormat("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(n);
+  }
   if (kind === "number") {
     return new Intl.NumberFormat("en-US", { maximumFractionDigits: 0 }).format(n);
   }

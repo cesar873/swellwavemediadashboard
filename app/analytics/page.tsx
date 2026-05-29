@@ -281,7 +281,7 @@ export default async function AnalyticsPage({ searchParams }: Props) {
 
             <section className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
               <KpiStat label="Client Concentration" value={concentrationR ? formatPercent(concNowKpi) : "—"} tone={concTone} delta={moMDeltaInverted(concNowKpi, concPrevKpi)} deltaLabel={deltaLabel} size="sm" />
-              <KpiStat label="Burn Rate"    value={burnR ? formatNumber(burnNow) : "—"} tone={burnTone} delta={moMDeltaInverted(burnNow, burnPrev)} deltaLabel={deltaLabel} size="sm" />
+              <KpiStat label="Burn Rate"    value={burnR ? formatNumber(burnNow, 2) : "—"} tone={burnTone} delta={moMDeltaInverted(burnNow, burnPrev)} deltaLabel={deltaLabel} size="sm" />
               <KpiStat label="Ending Cash"  value={cashR ? formatCurrency(cashNow, { compact: true }) : "—"} tone={cashTone} delta={moMDelta(cashNow, cashPrev)} deltaLabel={deltaLabel} size="sm" />
               <KpiStat label="Churn"        value={formatPercent(churnNow)} tone={churnTone} delta={moMDeltaInverted(churnNow, churnPrev)} deltaLabel={deltaLabel} size="sm" />
               <KpiStat label="Total Clients" value={String(Math.round(totalNow))} tone={totalTone} delta={moMDelta(totalNow, totalPrev)} deltaLabel={deltaLabel} size="sm" />
@@ -343,9 +343,9 @@ export default async function AnalyticsPage({ searchParams }: Props) {
                   data={burnRateData}
                   xKey="label"
                   series={[
-                    { key: "burn", label: "Burn rate", color: CHART_PALETTE.amber, format: "number" },
+                    { key: "burn", label: "Burn rate", color: CHART_PALETTE.amber, format: "decimal" },
                   ]}
-                  leftFormat="number"
+                  leftFormat="decimal"
                   height={300}
                   forecastStartIndex={vForecastIdx >= 0 ? vForecastIdx : undefined}
                 />
