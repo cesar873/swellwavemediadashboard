@@ -664,48 +664,96 @@ export async function fetchReceivables(): Promise<Receivable[]> {
 
   const hdr = grid[0];
   const headerOf = (i: number) => parseStr(hdr[i]);
-  const findCol = (re: RegExp) => hdr.findIndex(c => re.test(parseStr(c).toLowerCase()));
+  // First header matching the regex, excluding the absolute status/notes cols.
+  const findCol = (re: RegExp) =>
+    hdr.findIndex((c, i) =>
+      i !== RECEIVABLE_STATUS_COL && i !== RECEIVABLE_NOTES_COL && re.test(parseStr(c).toLowerCase()),
+    );
 
-  const iClient  = findCol(/^client\b|client name|customer|account/);
-  const iService = findCol(/service|product|engagement|description|memo/);
-  const iAmount  = findCol(/amount|total|invoice value|\bvalue\b|open/);
-  const iInvDate = findCol(/invoice date|issue|sent|billed|^date$/);
-  const iDueDate = findCol(/due/);
+  const iClient   = findCol(/^client\b|client name|customer|account name/);
+  const iService  = findCol(/service|product|engagement/);
+  const iAmount   = findCol(/^amount$|^total$|invoice amount|invoice value|amount due|^value$|gross/);
+  const iOpen     = findCol(/open\s*amount|outstanding|balance|^open$/);
+  const iInvDate  = findCol(/invoice date|issue date|^date$|created|bill date/);
+  const iSent     = findCol(/sent/);
+  const iDueDate  = findCol(/due/);
+  const iPaid     = findCol(/paid/);
+  const iDaysOvd  = findCol(/days overdue|overdue|days late|aging/);
+  const iPayType  = findCol(/pay type|payment type|billing type|^type$/);
+  const iRule     = findCol(/rule|basis|calc/);
+  const iAdSpend  = findCol(/ad spend|adspend|^spend$/);
+  const iDiscount = findCol(/discount/);
+  const iOther    = findCol(/other|adjust/);
+  const iPlatform = findCol(/platform|pay via|processor|gateway|method/);
+  const iCurrency = findCol(/currency|ccy/);
+  const iInvNum   = findCol(/invoice number|invoice #|inv #|invoice no/);
+
+  const matched = new Set([
+    iClient, iService, iAmount, iOpen, iInvDate, iSent, iDueDate, iPaid, iDaysOvd,
+    iPayType, iRule, iAdSpend, iDiscount, iOther, iPlatform, iCurrency, iInvNum,
+    RECEIVABLE_STATUS_COL, RECEIVABLE_NOTES_COL,
+  ]);
+
+  const at = (row: Row, i: number) => (i >= 0 ? parseStr(row[i]) : '');
+  const num = (row: Row, i: number) => (i >= 0 ? parseNum(row[i]) : 0);
 
   const out: Receivable[] = [];
   for (let r = 1; r < grid.length; r++) {
     const row = grid[r] ?? [];
-    const status = parseStr(row[RECEIVABLE_STATUS_COL]);
-    const client = iClient >= 0 ? parseStr(row[iClient]) : '';
-    // Skip fully-empty rows.
     const hasAnything = row.some(c => parseStr(c) !== '');
     if (!hasAnything) continue;
-    // Need at least a client or a status to be a real receivable line.
+    const status = parseStr(row[RECEIVABLE_STATUS_COL]);
+    const client = at(row, iClient);
     if (!client && !status) continue;
 
-    // Stash unmatched columns under their header for the detail popover.
+    const invoiceDate = at(row, iInvDate);
+    const dueDate = at(row, iDueDate);
+
     const raw: Record<string, string> = {};
     for (let c = 0; c < row.length; c++) {
-      if (c === iClient || c === iService || c === iAmount || c === iInvDate || c === iDueDate) continue;
-      if (c === RECEIVABLE_STATUS_COL || c === RECEIVABLE_NOTES_COL) continue;
+      if (matched.has(c)) continue;
       const h = headerOf(c);
       const v = parseStr(row[c]);
       if (h && v) raw[h] = v;
     }
 
     out.push({
-      rowNumber: r + 1, // grid index r → sheet row r+1 (header is sheet row 1)
+      rowNumber:   r + 1,
       client,
-      service:    iService >= 0 ? parseStr(row[iService]) : '',
-      amount:     iAmount  >= 0 ? parseNum(row[iAmount])  : 0,
-      invoiceDate: iInvDate >= 0 ? parseStr(row[iInvDate]) : '',
-      dueDate:    iDueDate >= 0 ? parseStr(row[iDueDate]) : '',
+      service:     at(row, iService),
+      amount:      num(row, iAmount),
+      openAmount:  iOpen >= 0 ? num(row, iOpen) : 0,
       status,
-      notes:      parseStr(row[RECEIVABLE_NOTES_COL]),
+      notes:       parseStr(row[RECEIVABLE_NOTES_COL]),
+      invoiceDate,
+      sentDate:    at(row, iSent),
+      dueDate,
+      paidDate:    at(row, iPaid),
+      daysOverdue: num(row, iDaysOvd),
+      payType:     at(row, iPayType),
+      paymentRule: at(row, iRule),
+      adSpend:     num(row, iAdSpend),
+      discounts:   num(row, iDiscount),
+      otherChange: num(row, iOther),
+      payPlatform: at(row, iPlatform),
+      currency:    at(row, iCurrency),
+      invoiceNumber: at(row, iInvNum),
+      monthIso:    toMonthIsoLocal(invoiceDate) || toMonthIsoLocal(dueDate),
       raw,
     });
   }
   return out;
+}
+
+// Parse a date-ish string to the first-of-month ISO. Handles real dates
+// ("Jun 5, 2026", "2026-06-05", "6/5/2026") and "Mon YYYY" labels.
+function toMonthIsoLocal(s: string): string {
+  if (!s) return '';
+  const d = new Date(s);
+  if (!isNaN(+d)) {
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-01`;
+  }
+  return labelToIsoLocal(s);
 }
 
 // Column-letter helper for write targets (0-based index → A1 letter).

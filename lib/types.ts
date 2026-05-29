@@ -139,15 +139,29 @@ export interface TeamProfitRow {
 // Phase Operations — one row per receivable/invoice line from the Receivables
 // tab. Status lives in column Q, client-written notes in column X. rowNumber is
 // the 1-based sheet row so server actions can target Q{row} / X{row}.
+// Mirrors the buildout Invoices schema; missing columns degrade to ""/0.
 export interface Receivable {
   rowNumber: number;
   client: string;
   service: string;
   amount: number;
+  openAmount: number;
+  status: string;       // column Q
+  notes: string;        // column X
   invoiceDate: string;
+  sentDate: string;
   dueDate: string;
-  status: string;     // column Q
-  notes: string;      // column X
+  paidDate: string;
+  daysOverdue: number;  // positive = late, negative = future-due, 0 = paid/unknown
+  payType: string;      // e.g. "Monthly - Auto"
+  paymentRule: string;  // e.g. "10% of Ad Spend"
+  adSpend: number;
+  discounts: number;
+  otherChange: number;
+  payPlatform: string;  // e.g. "Bank", "Stripe", "Bill"
+  currency: string;     // e.g. "USD"
+  invoiceNumber: string;
+  monthIso: string;     // derived from invoiceDate (else dueDate)
   raw: Record<string, string>;
 }
 

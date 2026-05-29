@@ -11,7 +11,7 @@ import { SignedLostBars } from "@/components/charts/SignedLostBars";
 import { MetricsTable } from "@/components/tables/MetricsTable";
 import { CHART_PALETTE } from "@/components/charts/chart-shared";
 import { bootstrapPage, type PageSearchParams } from "@/lib/page-bootstrap";
-import { formatCurrency, formatPercent, type Tone } from "@/lib/utils";
+import { formatCurrency, formatPercent, formatNumber, type Tone } from "@/lib/utils";
 import { labelToIso, isoToLabel } from "@/lib/period";
 import type { MetricRow } from "@/lib/types";
 import type { Metadata } from "next";
@@ -76,6 +76,9 @@ export default async function AnalyticsPage({ searchParams }: Props) {
   const totalR  = lookup("Total Unique Clients", "Total Clients", "Active Clients");
   const signedR = lookup("Unique Clients Signed", "Clients Signed", "New Clients", "Signed");
   const lostR   = lookup("Unique Clients Lost", "Clients Lost", "Lost Clients", "Lost");
+  const concentrationR = lookup("Client Concentration", "Concentration", "Top Client Share", "Top-1 Share");
+  const burnR          = lookup("Burn Rate", "Net Burn", "Burn");
+  const cashR          = lookup("Total for bank accounts", "Ending Cash", "Cash on hand", "Cash");
 
   const empty = !m.metricRows?.length;
 
@@ -86,6 +89,9 @@ export default async function AnalyticsPage({ searchParams }: Props) {
   const totalAligned  = alignedValues(totalR);
   const signedAligned = alignedValues(signedR);
   const lostAligned   = alignedValues(lostR);
+  const concAligned   = alignedValues(concentrationR);
+  const burnAligned   = alignedValues(burnR);
+  const cashAligned   = alignedValues(cashR);
 
   const atSel   = (arr: number[]) => (selectedMonthIndex >= 0 ? arr[selectedMonthIndex] ?? 0 : 0);
   const atPrior = (arr: number[]) => (priorMonthIndex   >= 0 ? arr[priorMonthIndex]   ?? 0 : 0);
@@ -100,6 +106,13 @@ export default async function AnalyticsPage({ searchParams }: Props) {
   const totalPrev = atPrior(totalAligned);
   const ratioNow  = cacNow > 0 ? ltvNow / cacNow : 0;
   const ratioPrev = cacPrev > 0 ? ltvPrev / cacPrev : 0;
+
+  const concNowKpi  = atSel(concAligned);
+  const concPrevKpi = atPrior(concAligned);
+  const burnNow     = atSel(burnAligned);
+  const burnPrev    = atPrior(burnAligned);
+  const cashNow     = atSel(cashAligned);
+  const cashPrev    = atPrior(cashAligned);
 
   const signedNow = atSel(signedAligned);
   const lostNow   = atSel(lostAligned);
@@ -119,9 +132,13 @@ export default async function AnalyticsPage({ searchParams }: Props) {
 
   const ratioTone: Tone   = ratioNow >= 3 ? "success" : ratioNow >= 1 ? "warning" : "danger";
   const churnTone: Tone   = churnNow <= 0.05 ? "success" : churnNow <= 0.10 ? "warning" : "danger";
-  const ltvTone: Tone     = (moMDelta(ltvNow, ltvPrev) ?? 0) >= 0 ? "success" : "danger";
-  const cacTone: Tone     = (moMDelta(cacNow, cacPrev) ?? 0) <= 0 ? "success" : "warning";
   const totalTone: Tone   = (moMDelta(totalNow, totalPrev) ?? 0) >= 0 ? "success" : "danger";
+  // Concentration: lower = more diversified = better.
+  const concTone: Tone    = concNowKpi <= 0.25 ? "success" : concNowKpi <= 0.4 ? "warning" : "danger";
+  // Burn: falling burn (or net-positive) is good.
+  const burnTone: Tone    = burnNow <= 0 ? "success" : (moMDelta(burnNow, burnPrev) ?? 0) <= 0 ? "success" : "warning";
+  // Cash: rising cash is good.
+  const cashTone: Tone    = (moMDelta(cashNow, cashPrev) ?? 0) >= 0 ? "success" : "warning";
 
   // ── Visible month window — clip every chart + table to the selected range ─
   // The Metrics tab carries its own months; we only render those that fall
@@ -135,8 +152,16 @@ export default async function AnalyticsPage({ searchParams }: Props) {
 
   const vLabels   = visibleIdx.map(i => m.metricMonths?.[i] ?? "");
   const vStatuses = visibleIdx.map(i => m.metricStatuses?.[i] ?? "Actuals");
-  // First forecast position within the visible window (for forecast styling).
-  const vForecastIdx = vStatuses.findIndex(s => s === "Forecast");
+  // First forecast position within the visible window. A month is forecast if
+  // its ISO is past latestActualIso OR the Metrics Status row marks it — so the
+  // dashed forecast styling shows even when the sheet has no Status row.
+  const vForecastIdx = (() => {
+    for (let k = 0; k < visibleIdx.length; k++) {
+      const iso = metricMonthsIso[visibleIdx[k]] ?? "";
+      if ((iso && latestActualIso && iso > latestActualIso) || vStatuses[k] === "Forecast") return k;
+    }
+    return -1;
+  })();
 
   const vValues = (row: MetricRow | null): number[] =>
     visibleIdx.map(i => row?.values[i] ?? 0);
@@ -255,10 +280,10 @@ export default async function AnalyticsPage({ searchParams }: Props) {
             <WhatToDoNext periodLabel={insightsHeadline} insights={insights} />
 
             <section className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
-              <KpiStat label="LTV"      value={formatCurrency(ltvNow, { compact: true })} tone={ltvTone}   delta={moMDelta(ltvNow, ltvPrev)}     deltaLabel={deltaLabel} size="sm" />
-              <KpiStat label="CAC"      value={formatCurrency(cacNow, { compact: true })} tone={cacTone}   delta={moMDelta(cacNow, cacPrev)}     deltaLabel={deltaLabel} size="sm" />
-              <KpiStat label="LTV/CAC"  value={ratioNow > 0 ? `${ratioNow.toFixed(1)}x` : "—"} tone={ratioTone} delta={moMDelta(ratioNow, ratioPrev)} deltaLabel={deltaLabel} size="sm" />
-              <KpiStat label="Churn"    value={formatPercent(churnNow)} tone={churnTone} delta={moMDeltaInverted(churnNow, churnPrev)} deltaLabel={deltaLabel} size="sm" />
+              <KpiStat label="Client Concentration" value={concentrationR ? formatPercent(concNowKpi) : "—"} tone={concTone} delta={moMDeltaInverted(concNowKpi, concPrevKpi)} deltaLabel={deltaLabel} size="sm" />
+              <KpiStat label="Burn Rate"    value={burnR ? formatNumber(burnNow) : "—"} tone={burnTone} delta={moMDeltaInverted(burnNow, burnPrev)} deltaLabel={deltaLabel} size="sm" />
+              <KpiStat label="Ending Cash"  value={cashR ? formatCurrency(cashNow, { compact: true }) : "—"} tone={cashTone} delta={moMDelta(cashNow, cashPrev)} deltaLabel={deltaLabel} size="sm" />
+              <KpiStat label="Churn"        value={formatPercent(churnNow)} tone={churnTone} delta={moMDeltaInverted(churnNow, churnPrev)} deltaLabel={deltaLabel} size="sm" />
               <KpiStat label="Total Clients" value={String(Math.round(totalNow))} tone={totalTone} delta={moMDelta(totalNow, totalPrev)} deltaLabel={deltaLabel} size="sm" />
             </section>
 
@@ -318,9 +343,9 @@ export default async function AnalyticsPage({ searchParams }: Props) {
                   data={burnRateData}
                   xKey="label"
                   series={[
-                    { key: "burn", label: "Burn rate", color: CHART_PALETTE.amber, format: "currency" },
+                    { key: "burn", label: "Burn rate", color: CHART_PALETTE.amber, format: "number" },
                   ]}
-                  leftFormat="currency"
+                  leftFormat="number"
                   height={300}
                   forecastStartIndex={vForecastIdx >= 0 ? vForecastIdx : undefined}
                 />

@@ -31,6 +31,20 @@ export async function approveReceivable(rowNumber: number): Promise<ActionResult
   }
 }
 
+// Client picks a status from the dropdown → written to col Q.
+export async function setReceivableStatus(
+  rowNumber: number,
+  status: string,
+): Promise<ActionResult> {
+  try {
+    await writeReceivableCell(rowNumber, RECEIVABLE_COLS.status, status);
+    revalidatePath("/payments");
+    return { ok: true };
+  } catch (e) {
+    return { ok: false, error: toError(e) };
+  }
+}
+
 // Client saves a note → written to col X (replace, not append).
 export async function saveReceivableNote(
   rowNumber: number,
