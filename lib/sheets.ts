@@ -204,6 +204,8 @@ export async function fetchDashboardData(): Promise<DashboardData> {
   const clientHeaderIdx = clientHeaderResult?.idx ?? -1;
 
   const clientRows: ClientRow[] = [];
+  let clientMonthLabels: string[] = [];
+  let clientMonthsIso: string[] = [];
   if (clientHeaderIdx >= 0) {
     const hdr = clientGrid[clientHeaderIdx];
     // Figure out which column is which
@@ -217,12 +219,13 @@ export async function fetchDashboardData(): Promise<DashboardData> {
     const iTeam    = colOf('Team');
     const iEnd     = colOf('End Reason');
 
-    // Month columns: find columns whose header contains "2026" or "2025"
+    // Month columns: accept both "Jan 2025" (PL-style) and "Jan 25" (Metrics-style).
     const monthColIdxs: number[] = [];
     hdr.forEach((c, i) => {
-      if (/20\d\d/.test(parseStr(c))) monthColIdxs.push(i);
+      if (MON_RE.test(parseStr(c))) monthColIdxs.push(i);
     });
-    const revMonths = monthColIdxs.map(i => parseStr(hdr[i]));
+    clientMonthLabels = monthColIdxs.map(i => parseStr(hdr[i]));
+    clientMonthsIso = clientMonthLabels.map(l => labelToIsoLocal(l));
 
     for (let r = clientHeaderIdx + 1; r < clientGrid.length; r++) {
       const row = clientGrid[r];
@@ -569,6 +572,8 @@ export async function fetchDashboardData(): Promise<DashboardData> {
     expenseCategories,
     cogsCategories,
     clients: clientRows,
+    clientMonthLabels,
+    clientMonthsIso,
     clientProfits,
     teamMembers,
     teamProfit,

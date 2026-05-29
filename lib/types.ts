@@ -143,6 +143,10 @@ export interface DashboardData {
   expenseCategories: ExpenseCategory[];
   cogsCategories: COGSCategory[];
   clients: ClientRow[];
+  /** Month labels (raw, e.g. "Jan 2026" or "Jan 25") aligned to ClientRow.monthlyRevenue indices. */
+  clientMonthLabels: string[];
+  /** ISO month strings (e.g. "2026-01-01") aligned to ClientRow.monthlyRevenue indices. */
+  clientMonthsIso: string[];
   clientProfits: ClientProfit[];
   teamMembers: TeamMember[];
   teamProfit: TeamProfitRow[];

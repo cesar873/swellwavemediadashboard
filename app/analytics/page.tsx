@@ -258,19 +258,20 @@ export default async function AnalyticsPage({ searchParams }: Props) {
   const lostVals   = getMetricMonthValues(lostR.row);
 
   // ── Client concentration per month ──────────────────────────────────────
-  // For each Metrics-tab month, find the matching PL month, then look up
-  // every client's revenue for that month from data.clients[].monthlyRevenue.
+  // The Clients tab and the Metrics tab can have different month-column sets,
+  // so we look up by ISO month (not array index) using clientMonthsIso —
+  // which sheets.ts now exposes alongside the per-client monthlyRevenue array.
   // Top-1 share = biggest client's % of total. Top-3 share = sum of top 3 / total.
-  // These are computed live from the Clients tab — nothing hardcoded.
+  // Live from the Clients tab — nothing hardcoded.
   const concentrationData = metricMonthLabels.map((label) => {
     const iso = labelToIso(label) ?? "";
-    const plIdx = data.pl.months.findIndex(m => (labelToIso(m.label) ?? "") === iso);
-    if (plIdx < 0) {
+    const cIdx = data.clientMonthsIso?.indexOf(iso) ?? -1;
+    if (cIdx < 0) {
       return { label, top1: 0, top3: 0, topClient: "" };
     }
     const revenues: { client: string; value: number }[] = [];
     for (const c of data.clients) {
-      const v = c.monthlyRevenue[plIdx] ?? 0;
+      const v = c.monthlyRevenue[cIdx] ?? 0;
       if (v > 0) revenues.push({ client: c.client, value: v });
     }
     revenues.sort((a, b) => b.value - a.value);
@@ -401,6 +402,25 @@ export default async function AnalyticsPage({ searchParams }: Props) {
 
             <section className="mt-8">
               <CardShell
+                title="Client concentration per month"
+                subtitle="Share of monthly revenue held by the top client and the top-3 combined · lower = more diversified"
+              >
+                <MultiLineChart
+                  data={concentrationData}
+                  xKey="label"
+                  series={[
+                    { key: "top1", label: "Top-1 client share", color: CHART_PALETTE.amber, format: "percent" },
+                    { key: "top3", label: "Top-3 combined",     color: CHART_PALETTE.blue,  format: "percent" },
+                  ]}
+                  leftFormat="percent"
+                  height={320}
+                  forecastStartIndex={metricForecastIdx >= 0 ? metricForecastIdx : undefined}
+                />
+              </CardShell>
+            </section>
+
+            <section className="mt-6">
+              <CardShell
                 title="LTV vs CAC"
                 subtitle="Lifetime value over customer acquisition cost — gap = unit economics health"
               >
@@ -446,25 +466,6 @@ export default async function AnalyticsPage({ searchParams }: Props) {
                   height={360}
                   forecastStartIndex={metricForecastIdx >= 0 ? metricForecastIdx : undefined}
                   totalLabel={counting === "unique" ? "Total unique clients" : "Total clients"}
-                />
-              </CardShell>
-            </section>
-
-            <section className="mt-6">
-              <CardShell
-                title="Client concentration per month"
-                subtitle="Share of monthly revenue held by the top client and the top-3 combined · lower = more diversified"
-              >
-                <MultiLineChart
-                  data={concentrationData}
-                  xKey="label"
-                  series={[
-                    { key: "top1", label: "Top-1 client share", color: CHART_PALETTE.amber, format: "percent" },
-                    { key: "top3", label: "Top-3 combined",     color: CHART_PALETTE.blue,  format: "percent" },
-                  ]}
-                  leftFormat="percent"
-                  height={320}
-                  forecastStartIndex={metricForecastIdx >= 0 ? metricForecastIdx : undefined}
                 />
               </CardShell>
             </section>
