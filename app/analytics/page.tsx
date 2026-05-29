@@ -257,19 +257,47 @@ export default async function AnalyticsPage({ searchParams }: Props) {
   const signedVals = getMetricMonthValues(signedR.row);
   const lostVals   = getMetricMonthValues(lostR.row);
 
-  // Average MRR per client: prefer an explicit row, else derive Revenue / Clients.
-  const arpuRow = lookup("Average MRR per client") ?? lookup("ARPU") ?? lookup("MRR per client");
-  let arpuVals: number[];
-  if (arpuRow) {
-    arpuVals = arpuRow.values;
-  } else {
-    const revRow = lookup("Total Revenue");
-    const revVals = revRow?.values ?? [];
-    arpuVals = metricMonthLabels.map((_, i) => {
-      const r = revVals[i] ?? 0;
-      const c = totalVals[i] ?? 0;
-      return c > 0 ? r / c : 0;
-    });
+  // ── Client concentration per month ──────────────────────────────────────
+  // For each Metrics-tab month, find the matching PL month, then look up
+  // every client's revenue for that month from data.clients[].monthlyRevenue.
+  // Top-1 share = biggest client's % of total. Top-3 share = sum of top 3 / total.
+  // These are computed live from the Clients tab — nothing hardcoded.
+  const concentrationData = metricMonthLabels.map((label) => {
+    const iso = labelToIso(label) ?? "";
+    const plIdx = data.pl.months.findIndex(m => (labelToIso(m.label) ?? "") === iso);
+    if (plIdx < 0) {
+      return { label, top1: 0, top3: 0, topClient: "" };
+    }
+    const revenues: { client: string; value: number }[] = [];
+    for (const c of data.clients) {
+      const v = c.monthlyRevenue[plIdx] ?? 0;
+      if (v > 0) revenues.push({ client: c.client, value: v });
+    }
+    revenues.sort((a, b) => b.value - a.value);
+    const total = revenues.reduce((a, r) => a + r.value, 0);
+    if (total === 0) return { label, top1: 0, top3: 0, topClient: "" };
+    const top1Share = revenues[0].value / total;
+    const top3Share = revenues.slice(0, 3).reduce((a, r) => a + r.value, 0) / total;
+    return { label, top1: top1Share, top3: top3Share, topClient: revenues[0].client };
+  });
+
+  // Latest-month concentration powers an extra insight callout (so the chart
+  // gets a written interpretation in WhatToDoNext too).
+  const concNow = concentrationData[concentrationData.length - 1];
+  if (concNow && concNow.top1 > 0) {
+    const t1 = (concNow.top1 * 100).toFixed(0);
+    const t3 = (concNow.top3 * 100).toFixed(0);
+    if (concNow.top1 >= 0.25) {
+      insights.push({
+        type: concNow.top1 >= 0.4 ? "alert" : "warn",
+        text: `${concNow.topClient} books ${t1}% of revenue this month (top-3: ${t3}%). Concentration risk.`,
+      });
+    } else if (concNow.top3 >= 0.5) {
+      insights.push({
+        type: "warn",
+        text: `Top-3 clients book ${t3}% of revenue this month — diversification would lower risk.`,
+      });
+    }
   }
 
   const ltvVsCacData = metricMonthLabels.map((label, i) => ({
@@ -290,10 +318,6 @@ export default async function AnalyticsPage({ searchParams }: Props) {
     total:  totalVals[i] ?? 0,
   }));
 
-  const arpuData = metricMonthLabels.map((label, i) => ({
-    label,
-    arpu: arpuVals[i] ?? 0,
-  }));
 
   // Period label uses the selected single month per the screenshot
   // ("WHAT TO DO NEXT · APR 26").
@@ -428,21 +452,18 @@ export default async function AnalyticsPage({ searchParams }: Props) {
 
             <section className="mt-6">
               <CardShell
-                title="Average MRR per client"
-                subtitle={
-                  arpuRow
-                    ? "Pulled from the Metrics tab"
-                    : "Derived: Total Revenue ÷ Total Clients"
-                }
+                title="Client concentration per month"
+                subtitle="Share of monthly revenue held by the top client and the top-3 combined · lower = more diversified"
               >
                 <MultiLineChart
-                  data={arpuData}
+                  data={concentrationData}
                   xKey="label"
                   series={[
-                    { key: "arpu", label: "ARPU", color: CHART_PALETTE.green, format: "currency" },
+                    { key: "top1", label: "Top-1 client share", color: CHART_PALETTE.amber, format: "percent" },
+                    { key: "top3", label: "Top-3 combined",     color: CHART_PALETTE.blue,  format: "percent" },
                   ]}
-                  leftFormat="currency"
-                  height={300}
+                  leftFormat="percent"
+                  height={320}
                   forecastStartIndex={metricForecastIdx >= 0 ? metricForecastIdx : undefined}
                 />
               </CardShell>
