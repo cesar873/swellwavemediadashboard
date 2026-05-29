@@ -12,14 +12,14 @@ export const STATUS_ENUM = [
 ] as const;
 
 export const STATUS_CLIENT_REVIEW = "Client Review";
-export const STATUS_AGENCY_REVIEW = "Agency FO Review"; // what Approve writes
+export const STATUS_AGENCY_REVIEW = "AgenCFO Review"; // what Approve writes
 
 export type StatusKind = "review-client" | "review-agency" | "pipeline" | "paid" | "unpaid" | "neutral";
 
 export function statusKind(status: string): StatusKind {
   const s = status.toLowerCase();
   if (s.includes("client review")) return "review-client";
-  if (s.includes("agency") || s.includes("fo review")) return "review-agency";
+  if (s.includes("agencfo") || s.includes("agency") || s.includes("fo review")) return "review-agency";
   if (s.includes("fully paid") || s === "paid") return "paid";
   if (s.includes("unpaid") || s.includes("partially") || s.includes("overdue")) return "unpaid";
   if (s.includes("in progress") || s.includes("ready") || s.includes("draft")) return "pipeline";

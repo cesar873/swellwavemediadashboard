@@ -20,7 +20,7 @@ function toError(e: unknown): string {
   return msg || "Write failed.";
 }
 
-// Client clicks Approve → status (col Q) becomes "Agency FO Review".
+// Client clicks Approve → status (col Q) becomes "AgenCFO Review".
 export async function approveReceivable(rowNumber: number): Promise<ActionResult> {
   try {
     await writeReceivableCell(rowNumber, RECEIVABLE_COLS.status, STATUS_AGENCY_REVIEW);

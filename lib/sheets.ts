@@ -627,7 +627,7 @@ export async function fetchDashboardData(): Promise<DashboardData> {
 
 // ── Receivables (Phase Operations) ────────────────────────────────────────────
 // Bound columns are addressed by ABSOLUTE position per the sheet contract:
-//   column Q (index 16) = status   ("Client Review" → "Agency FO Review" …)
+//   column Q (index 16) = status   ("Client Review" → "AgenCFO Review" …)
 //   column X (index 23) = notes     (client-written, free text)
 // Everything else is classified by header so the UI can show client / amount /
 // dates. The 1-based sheet rowNumber is preserved for write-back.
@@ -636,7 +636,7 @@ const RECEIVABLE_NOTES_COL  = 23; // X
 
 export const RECEIVABLES_TAB = 'Receivables';
 export const STATUS_CLIENT_REVIEW = 'Client Review';
-export const STATUS_AGENCY_REVIEW = 'Agency FO Review';
+export const STATUS_AGENCY_REVIEW = 'AgenCFO Review';
 
 export async function fetchReceivables(): Promise<Receivable[]> {
   const auth = getAuth();
@@ -747,13 +747,26 @@ export async function fetchReceivables(): Promise<Receivable[]> {
 
 // Parse a date-ish string to the first-of-month ISO. Handles real dates
 // ("Jun 5, 2026", "2026-06-05", "6/5/2026") and "Mon YYYY" labels.
+// CRITICAL: require an explicit 4-digit year. A yearless string like "May 1"
+// gets silently defaulted to year 2001 by V8's Date parser — that's where the
+// bogus "May 2001" AR-grid column came from.
 function toMonthIsoLocal(s: string): string {
   if (!s) return '';
-  const d = new Date(s);
+  const str = String(s).trim();
+  const yearMatch = str.match(/(19|20)\d{2}/);
+  if (!yearMatch) return ''; // no real year → not a dated invoice
+  const year = yearMatch[0];
+  const d = new Date(str);
   if (!isNaN(+d)) {
     return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-01`;
   }
-  return labelToIsoLocal(s);
+  // Fallback: "<Month name> <YYYY>" that Date() didn't like.
+  const mm = str.toLowerCase().match(/(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)/);
+  if (mm) {
+    const map: Record<string, number> = { jan: 1, feb: 2, mar: 3, apr: 4, may: 5, jun: 6, jul: 7, aug: 8, sep: 9, oct: 10, nov: 11, dec: 12 };
+    return `${year}-${String(map[mm[1]]).padStart(2, '0')}-01`;
+  }
+  return '';
 }
 
 // Column-letter helper for write targets (0-based index → A1 letter).

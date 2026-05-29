@@ -113,7 +113,7 @@ function NoteButton({ row, initial }: { row: number; initial: string }) {
             value={note}
             onChange={e => setNote(e.target.value)}
             rows={3}
-            placeholder="Add a note for the agency…"
+            placeholder="Add a note for AgenCFO…"
             className="w-full resize-y rounded-md border border-[var(--card-border)] bg-white/5 px-2 py-1.5 text-[12px] text-foreground placeholder:text-muted-foreground/50 focus:border-[var(--blue)] focus:outline-none"
           />
           <div className="mt-2 flex justify-end gap-2">
@@ -252,7 +252,7 @@ export function ActionsCenter({ receivables }: { receivables: Receivable[] }) {
               <tr><td colSpan={colCount} className="px-2 py-3 text-[12px] text-muted-foreground">Nothing waiting on you — all clear of client review.</td></tr>
             ) : awaiting.map((r, i) => <Row key={`a-${r.rowNumber}-${i}`} r={r} showApprove />)}
 
-            <SectionHead title="Scheduled" count={scheduled.length} sub="Drafts + ready + in agency review" />
+            <SectionHead title="Scheduled" count={scheduled.length} sub="Drafts + ready + in AgenCFO review" />
             {scheduled.length === 0 ? (
               <tr><td colSpan={colCount} className="px-2 py-3 text-[12px] text-muted-foreground">Nothing scheduled.</td></tr>
             ) : scheduled.map((r, i) => <Row key={`s-${r.rowNumber}-${i}`} r={r} showApprove={false} />)}
