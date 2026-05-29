@@ -9,7 +9,6 @@ import type { Receivable } from "@/lib/types";
 import { cn, formatCurrency } from "@/lib/utils";
 import {
   STATUS_ENUM,
-  STATUS_AGENCY_REVIEW,
   statusKind,
   statusPillStyle,
 } from "./shared";
@@ -259,10 +258,6 @@ export function ActionsCenter({ receivables }: { receivables: Receivable[] }) {
           </tbody>
         </table>
       </div>
-
-      <p className="mt-3 text-[11px] text-muted-foreground">
-        Approve → status becomes <span className="text-[var(--amber)]">{STATUS_AGENCY_REVIEW}</span> in column Q · notes save to column X
-      </p>
     </div>
   );
 }

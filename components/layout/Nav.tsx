@@ -12,6 +12,7 @@ const NAV_ITEMS = [
   { href: "/financials", label: "Financials" },
   { href: "/revenue",    label: "Revenue" },
   { href: "/expenses",   label: "Expenses" },
+  { href: "/analytics",  label: "Analytics" },
   { href: "/payments",   label: "Payments" },
 ];
 
