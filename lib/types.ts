@@ -136,6 +136,21 @@ export interface TeamProfitRow {
   revenueGap: number;        // negative = below target, positive = surplus
 }
 
+// Phase Operations — one row per receivable/invoice line from the Receivables
+// tab. Status lives in column Q, client-written notes in column X. rowNumber is
+// the 1-based sheet row so server actions can target Q{row} / X{row}.
+export interface Receivable {
+  rowNumber: number;
+  client: string;
+  service: string;
+  amount: number;
+  invoiceDate: string;
+  dueDate: string;
+  status: string;     // column Q
+  notes: string;      // column X
+  raw: Record<string, string>;
+}
+
 export interface DashboardData {
   lastUpdated: string;
   pl: PLData;

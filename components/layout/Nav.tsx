@@ -12,6 +12,7 @@ const NAV_ITEMS = [
   { href: "/financials", label: "Financials" },
   { href: "/revenue",    label: "Revenue" },
   { href: "/expenses",   label: "Expenses" },
+  { href: "/payments",   label: "Payments" },
 ];
 
 const GLOBAL_PARAMS = ["months", "from", "to", "month"];

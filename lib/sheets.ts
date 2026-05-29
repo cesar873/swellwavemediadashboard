@@ -1,5 +1,5 @@
 import { google } from 'googleapis';
-import type { DashboardData, PLData, ExpenseCategory, COGSCategory, ClientRow, ClientProfit, TeamMember, TeamProfitRow, ServiceCapacity, Transaction, BudgetRow, MetricsData } from './types';
+import type { DashboardData, PLData, ExpenseCategory, COGSCategory, ClientRow, ClientProfit, TeamMember, TeamProfitRow, ServiceCapacity, Transaction, BudgetRow, MetricsData, Receivable } from './types';
 
 const SPREADSHEET_ID = '1JkaZ1qfrWqEwmSmG-sjdgQ0a3ZaQHtD5zl_RgehqdeY';
 
@@ -27,7 +27,11 @@ function getAuth() {
   const credentials = JSON.parse(key);
   return new google.auth.GoogleAuth({
     credentials,
-    scopes: ['https://www.googleapis.com/auth/spreadsheets.readonly'],
+    // Read-write: the Payments tab writes status (col Q) + notes (col X) back
+    // to the Receivables tab. The service account must have Editor access on
+    // the sheet (Drive share) or writes return 403. Reads still work fine
+    // under this broader scope.
+    scopes: ['https://www.googleapis.com/auth/spreadsheets'],
   });
 }
 
@@ -620,3 +624,132 @@ export async function fetchDashboardData(): Promise<DashboardData> {
     metrics,
   };
 }
+
+// ── Receivables (Phase Operations) ────────────────────────────────────────────
+// Bound columns are addressed by ABSOLUTE position per the sheet contract:
+//   column Q (index 16) = status   ("Client Review" → "Agency FO Review" …)
+//   column X (index 23) = notes     (client-written, free text)
+// Everything else is classified by header so the UI can show client / amount /
+// dates. The 1-based sheet rowNumber is preserved for write-back.
+const RECEIVABLE_STATUS_COL = 16; // Q
+const RECEIVABLE_NOTES_COL  = 23; // X
+
+export const RECEIVABLES_TAB = 'Receivables';
+export const STATUS_CLIENT_REVIEW = 'Client Review';
+export const STATUS_AGENCY_REVIEW = 'Agency FO Review';
+
+export async function fetchReceivables(): Promise<Receivable[]> {
+  const auth = getAuth();
+  const sheets = google.sheets({ version: 'v4', auth });
+
+  // Resolve the tab name case-insensitively (defensive against "receivables").
+  let tabTitle = RECEIVABLES_TAB;
+  try {
+    const meta = await sheets.spreadsheets.get({ spreadsheetId: SPREADSHEET_ID });
+    const match = (meta.data.sheets ?? []).find(
+      s => (s.properties?.title ?? '').toLowerCase().includes('receivable'),
+    );
+    if (match?.properties?.title) tabTitle = match.properties.title;
+  } catch {
+    // fall back to the default tab name
+  }
+
+  const res = await sheets.spreadsheets.values.get({
+    spreadsheetId: SPREADSHEET_ID,
+    range: `'${tabTitle}'!A1:AZ500`,
+    valueRenderOption: 'FORMATTED_VALUE',
+  });
+  const grid = (res.data.values ?? []) as Grid;
+  if (grid.length < 2) return [];
+
+  const hdr = grid[0];
+  const headerOf = (i: number) => parseStr(hdr[i]);
+  const findCol = (re: RegExp) => hdr.findIndex(c => re.test(parseStr(c).toLowerCase()));
+
+  const iClient  = findCol(/^client\b|client name|customer|account/);
+  const iService = findCol(/service|product|engagement|description|memo/);
+  const iAmount  = findCol(/amount|total|invoice value|\bvalue\b|open/);
+  const iInvDate = findCol(/invoice date|issue|sent|billed|^date$/);
+  const iDueDate = findCol(/due/);
+
+  const out: Receivable[] = [];
+  for (let r = 1; r < grid.length; r++) {
+    const row = grid[r] ?? [];
+    const status = parseStr(row[RECEIVABLE_STATUS_COL]);
+    const client = iClient >= 0 ? parseStr(row[iClient]) : '';
+    // Skip fully-empty rows.
+    const hasAnything = row.some(c => parseStr(c) !== '');
+    if (!hasAnything) continue;
+    // Need at least a client or a status to be a real receivable line.
+    if (!client && !status) continue;
+
+    // Stash unmatched columns under their header for the detail popover.
+    const raw: Record<string, string> = {};
+    for (let c = 0; c < row.length; c++) {
+      if (c === iClient || c === iService || c === iAmount || c === iInvDate || c === iDueDate) continue;
+      if (c === RECEIVABLE_STATUS_COL || c === RECEIVABLE_NOTES_COL) continue;
+      const h = headerOf(c);
+      const v = parseStr(row[c]);
+      if (h && v) raw[h] = v;
+    }
+
+    out.push({
+      rowNumber: r + 1, // grid index r → sheet row r+1 (header is sheet row 1)
+      client,
+      service:    iService >= 0 ? parseStr(row[iService]) : '',
+      amount:     iAmount  >= 0 ? parseNum(row[iAmount])  : 0,
+      invoiceDate: iInvDate >= 0 ? parseStr(row[iInvDate]) : '',
+      dueDate:    iDueDate >= 0 ? parseStr(row[iDueDate]) : '',
+      status,
+      notes:      parseStr(row[RECEIVABLE_NOTES_COL]),
+      raw,
+    });
+  }
+  return out;
+}
+
+// Column-letter helper for write targets (0-based index → A1 letter).
+function colLetter(index: number): string {
+  let s = '';
+  let n = index;
+  do {
+    s = String.fromCharCode((n % 26) + 65) + s;
+    n = Math.floor(n / 26) - 1;
+  } while (n >= 0);
+  return s;
+}
+
+// Write a single cell. valueInputOption USER_ENTERED preserves any data
+// validation (e.g. a status dropdown on column Q). Throws on 403 (caller
+// surfaces "share the sheet with the service account as Editor").
+export async function writeReceivableCell(
+  rowNumber: number,
+  colIndex: number,
+  value: string,
+): Promise<void> {
+  const auth = getAuth();
+  const sheets = google.sheets({ version: 'v4', auth });
+  // Resolve tab name (same logic as the reader).
+  let tabTitle = RECEIVABLES_TAB;
+  try {
+    const meta = await sheets.spreadsheets.get({ spreadsheetId: SPREADSHEET_ID });
+    const match = (meta.data.sheets ?? []).find(
+      s => (s.properties?.title ?? '').toLowerCase().includes('receivable'),
+    );
+    if (match?.properties?.title) tabTitle = match.properties.title;
+  } catch {
+    // fall back
+  }
+  const a1 = `'${tabTitle}'!${colLetter(colIndex)}${rowNumber}`;
+  await sheets.spreadsheets.values.update({
+    spreadsheetId: SPREADSHEET_ID,
+    range: a1,
+    valueInputOption: 'USER_ENTERED',
+    requestBody: { values: [[value]] },
+  });
+}
+
+export const RECEIVABLE_COLS = {
+  status: RECEIVABLE_STATUS_COL,
+  notes: RECEIVABLE_NOTES_COL,
+};
