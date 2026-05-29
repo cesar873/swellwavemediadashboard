@@ -258,17 +258,14 @@ export default async function AnalyticsPage({ searchParams }: Props) {
   const lostVals   = getMetricMonthValues(lostR.row);
 
   // ── Client concentration per month ──────────────────────────────────────
-  // The Clients tab and the Metrics tab can have different month-column sets,
-  // so we look up by ISO month (not array index) using clientMonthsIso —
-  // which sheets.ts now exposes alongside the per-client monthlyRevenue array.
-  // Top-1 share = biggest client's % of total. Top-3 share = sum of top 3 / total.
-  // Live from the Clients tab — nothing hardcoded.
-  const concentrationData = metricMonthLabels.map((label) => {
-    const iso = labelToIso(label) ?? "";
-    const cIdx = data.clientMonthsIso?.indexOf(iso) ?? -1;
-    if (cIdx < 0) {
-      return { label, top1: 0, top3: 0, topClient: "" };
-    }
+  // Drive the x-axis directly from the Clients tab's own months, so the chart
+  // spans every month we actually have client revenue for — independent of
+  // whatever the Metrics tab happens to look like (orientation, label format,
+  // narrower or wider range). Top-1 = biggest client's share. Top-3 = sum of
+  // top 3 ÷ total. Live from the Clients tab.
+  const clientMonths = data.clientMonthLabels ?? [];
+  const clientMonthsIsoSafe = data.clientMonthsIso ?? [];
+  const concentrationData = clientMonths.map((label, cIdx) => {
     const revenues: { client: string; value: number }[] = [];
     for (const c of data.clients) {
       const v = c.monthlyRevenue[cIdx] ?? 0;
@@ -281,6 +278,10 @@ export default async function AnalyticsPage({ searchParams }: Props) {
     const top3Share = revenues.slice(0, 3).reduce((a, r) => a + r.value, 0) / total;
     return { label, top1: top1Share, top3: top3Share, topClient: revenues[0].client };
   });
+
+  // Forecast cutoff for THIS chart — find the first client month that comes
+  // after the global latestActualIso.
+  const concForecastIdx = clientMonthsIsoSafe.findIndex(iso => iso > latestActualIso);
 
   // Latest-month concentration powers an extra insight callout (so the chart
   // gets a written interpretation in WhatToDoNext too).
@@ -414,7 +415,7 @@ export default async function AnalyticsPage({ searchParams }: Props) {
                   ]}
                   leftFormat="percent"
                   height={320}
-                  forecastStartIndex={metricForecastIdx >= 0 ? metricForecastIdx : undefined}
+                  forecastStartIndex={concForecastIdx >= 0 ? concForecastIdx : undefined}
                 />
               </CardShell>
             </section>
