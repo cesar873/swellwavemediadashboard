@@ -411,13 +411,40 @@ export async function fetchDashboardData(): Promise<DashboardData> {
   // own month columns and rows for every metric the operator tracks. We capture
   // ALL rows generically so the Analytics table can show every metric, and we
   // also expose typed shortcuts for the most common fields.
-  const metricsGrid = allGrids.find(g => g.title.toLowerCase() === 'metrics')?.grid ?? [];
+  const metricsRawGrid = allGrids.find(g => g.title.toLowerCase() === 'metrics')?.grid ?? [];
   const metrics: MetricsData = {
     metricRows: [],
     metricMonths: [],
     metricMonthsIso: [],
     metricStatuses: [],
   };
+
+  // The Metrics tab can be laid out either way:
+  //   horizontal — row 0 = month headers, each subsequent row = a metric
+  //   vertical   — col 0 = month labels, each subsequent column = a metric
+  // Detect by counting MON_RE matches in row 0 vs column 0, and transpose if
+  // the vertical layout has more matches. After this block, `metricsGrid` is
+  // guaranteed to be in horizontal orientation for the rest of the parser.
+  let metricsGrid = metricsRawGrid;
+  if (metricsRawGrid.length > 1) {
+    const row0Matches = (metricsRawGrid[0] ?? []).filter(c => MON_RE.test(parseStr(c))).length;
+    let col0Matches = 0;
+    for (const row of metricsRawGrid) {
+      if (MON_RE.test(parseStr(row[0]))) col0Matches++;
+    }
+    if (col0Matches > row0Matches) {
+      const maxCols = Math.max(0, ...metricsRawGrid.map(r => r.length));
+      const transposed: Grid = [];
+      for (let c = 0; c < maxCols; c++) {
+        const newRow: Row = [];
+        for (let r = 0; r < metricsRawGrid.length; r++) {
+          newRow.push(metricsRawGrid[r]?.[c] ?? '');
+        }
+        transposed.push(newRow);
+      }
+      metricsGrid = transposed;
+    }
+  }
 
   if (metricsGrid.length > 1) {
     // 1. Find the month header row in the Metrics tab (its own columns).
@@ -478,10 +505,20 @@ export async function fetchDashboardData(): Promise<DashboardData> {
       metricRows.push({ name, rawStrings, values: finalValues, format });
     }
 
-    metrics.metricRows = metricRows;
-    metrics.metricMonths = metricMonths;
-    metrics.metricMonthsIso = metricMonthsIso;
-    metrics.metricStatuses = metricStatuses;
+    // Sort months chronologically — sheet authors don't always lay them out
+    // in date order, and the analytics charts assume an ordered x-axis.
+    const monthOrder = metricMonthsIso
+      .map((iso, i) => ({ iso, i }))
+      .sort((a, b) => (a.iso < b.iso ? -1 : a.iso > b.iso ? 1 : 0))
+      .map(x => x.i);
+    metrics.metricRows = metricRows.map(r => ({
+      ...r,
+      rawStrings: monthOrder.map(j => r.rawStrings[j] ?? ''),
+      values: monthOrder.map(j => r.values[j] ?? 0),
+    }));
+    metrics.metricMonths = monthOrder.map(j => metricMonths[j]);
+    metrics.metricMonthsIso = monthOrder.map(j => metricMonthsIso[j]);
+    metrics.metricStatuses = monthOrder.map(j => metricStatuses[j]);
 
     // 4. Typed shortcuts — look up by name, case-insensitive exact match first,
     // then fall back to "contains". Returns the values aligned to PL months

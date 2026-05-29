@@ -258,49 +258,64 @@ export default async function AnalyticsPage({ searchParams }: Props) {
   const lostVals   = getMetricMonthValues(lostR.row);
 
   // ── Client concentration per month ──────────────────────────────────────
-  // Drive the x-axis directly from the Clients tab's own months, so the chart
-  // spans every month we actually have client revenue for — independent of
-  // whatever the Metrics tab happens to look like (orientation, label format,
-  // narrower or wider range). Top-1 = biggest client's share. Top-3 = sum of
-  // top 3 ÷ total. Live from the Clients tab.
-  const clientMonths = data.clientMonthLabels ?? [];
-  const clientMonthsIsoSafe = data.clientMonthsIso ?? [];
-  const concentrationData = clientMonths.map((label, cIdx) => {
-    const revenues: { client: string; value: number }[] = [];
-    for (const c of data.clients) {
-      const v = c.monthlyRevenue[cIdx] ?? 0;
-      if (v > 0) revenues.push({ client: c.client, value: v });
-    }
-    revenues.sort((a, b) => b.value - a.value);
-    const total = revenues.reduce((a, r) => a + r.value, 0);
-    if (total === 0) return { label, top1: 0, top3: 0, topClient: "" };
-    const top1Share = revenues[0].value / total;
-    const top3Share = revenues.slice(0, 3).reduce((a, r) => a + r.value, 0) / total;
-    return { label, top1: top1Share, top3: top3Share, topClient: revenues[0].client };
-  });
+  // Pulled directly from the Metrics tab's "Client Concentration" column (the
+  // operator computes this server-side and stores it as a metric; we just
+  // surface it). Months from the Metrics tab are already sorted chronologically
+  // by sheets.ts so the chart goes left→right in time.
+  const concentrationRow =
+    lookup("Client Concentration") ??
+    lookup("Concentration") ??
+    lookup("Top Client Share") ??
+    lookup("Top-1 Share");
 
-  // Forecast cutoff for THIS chart — find the first client month that comes
-  // after the global latestActualIso.
-  const concForecastIdx = clientMonthsIsoSafe.findIndex(iso => iso > latestActualIso);
+  const concentrationData = metricMonthLabels.map((label, i) => ({
+    label,
+    concentration: concentrationRow?.values[i] ?? 0,
+  }));
+  const concForecastIdx = metricForecastIdx;
 
-  // Latest-month concentration powers an extra insight callout (so the chart
-  // gets a written interpretation in WhatToDoNext too).
+  // Latest-month concentration powers an extra insight callout.
   const concNow = concentrationData[concentrationData.length - 1];
-  if (concNow && concNow.top1 > 0) {
-    const t1 = (concNow.top1 * 100).toFixed(0);
-    const t3 = (concNow.top3 * 100).toFixed(0);
-    if (concNow.top1 >= 0.25) {
+  if (concNow && concNow.concentration > 0) {
+    const pct = (concNow.concentration * 100).toFixed(0);
+    if (concNow.concentration >= 0.4) {
       insights.push({
-        type: concNow.top1 >= 0.4 ? "alert" : "warn",
-        text: `${concNow.topClient} books ${t1}% of revenue this month (top-3: ${t3}%). Concentration risk.`,
-      });
-    } else if (concNow.top3 >= 0.5) {
-      insights.push({
-        type: "warn",
-        text: `Top-3 clients book ${t3}% of revenue this month — diversification would lower risk.`,
+        type: concNow.concentration >= 0.6 ? "alert" : "warn",
+        text: `Client concentration at ${pct}% — diversifying would lower revenue risk.`,
       });
     }
   }
+
+  // ── Ending Cash + Burn Rate (new Metrics tab columns) ───────────────────
+  const endingCashRow =
+    lookup("Total for bank accounts") ??
+    lookup("Ending Cash") ??
+    lookup("Cash on hand") ??
+    lookup("Cash");
+
+  const burnRateRow =
+    lookup("Burn Rate") ??
+    lookup("Net Burn") ??
+    lookup("Burn");
+
+  // OpEx (from PL) aligned to the Metrics tab months — for each metric month
+  // iso, find the matching PL month index and pull data.pl.opex[plIdx].
+  const opexVsCashData = metricMonthLabels.map((label, i) => {
+    const iso = m.metricMonthsIso?.[i] ?? "";
+    const plIdx = iso
+      ? data.pl.months.findIndex(mo => (labelToIso(mo.label) ?? "") === iso)
+      : -1;
+    return {
+      label,
+      opex: plIdx >= 0 ? data.pl.opex[plIdx] ?? 0 : 0,
+      cash: endingCashRow?.values[i] ?? 0,
+    };
+  });
+
+  const burnRateData = metricMonthLabels.map((label, i) => ({
+    label,
+    burn: burnRateRow?.values[i] ?? 0,
+  }));
 
   const ltvVsCacData = metricMonthLabels.map((label, i) => ({
     label,
@@ -404,17 +419,63 @@ export default async function AnalyticsPage({ searchParams }: Props) {
             <section className="mt-8">
               <CardShell
                 title="Client concentration per month"
-                subtitle="Share of monthly revenue held by the top client and the top-3 combined · lower = more diversified"
+                subtitle={
+                  concentrationRow
+                    ? `Pulled from the Metrics tab · "${concentrationRow.name}"`
+                    : "Add a Client Concentration row to the Metrics tab to populate this chart"
+                }
               >
                 <MultiLineChart
                   data={concentrationData}
                   xKey="label"
                   series={[
-                    { key: "top1", label: "Top-1 client share", color: CHART_PALETTE.amber, format: "percent" },
-                    { key: "top3", label: "Top-3 combined",     color: CHART_PALETTE.blue,  format: "percent" },
+                    { key: "concentration", label: "Client concentration", color: CHART_PALETTE.amber, format: "percent" },
                   ]}
                   leftFormat="percent"
                   height={320}
+                  forecastStartIndex={concForecastIdx >= 0 ? concForecastIdx : undefined}
+                />
+              </CardShell>
+            </section>
+
+            <section className="mt-6 grid grid-cols-1 gap-4 lg:grid-cols-2">
+              <CardShell
+                title="OpEx vs Ending Cash"
+                subtitle={
+                  endingCashRow
+                    ? `Monthly OpEx (P&L) against "${endingCashRow.name}" (Metrics tab)`
+                    : "Add a Total for bank accounts row to the Metrics tab to populate this chart"
+                }
+              >
+                <MultiLineChart
+                  data={opexVsCashData}
+                  xKey="label"
+                  series={[
+                    { key: "opex", label: "OpEx",        color: CHART_PALETTE.red,  format: "currency" },
+                    { key: "cash", label: "Ending Cash", color: CHART_PALETTE.blue, format: "currency" },
+                  ]}
+                  leftFormat="currency"
+                  height={300}
+                  forecastStartIndex={concForecastIdx >= 0 ? concForecastIdx : undefined}
+                />
+              </CardShell>
+
+              <CardShell
+                title="Burn Rate"
+                subtitle={
+                  burnRateRow
+                    ? `Pulled from the Metrics tab · "${burnRateRow.name}"`
+                    : "Add a Burn Rate row to the Metrics tab to populate this chart"
+                }
+              >
+                <MultiLineChart
+                  data={burnRateData}
+                  xKey="label"
+                  series={[
+                    { key: "burn", label: "Burn rate", color: CHART_PALETTE.amber, format: "currency" },
+                  ]}
+                  leftFormat="currency"
+                  height={300}
                   forecastStartIndex={concForecastIdx >= 0 ? concForecastIdx : undefined}
                 />
               </CardShell>

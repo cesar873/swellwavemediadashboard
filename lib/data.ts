@@ -5,7 +5,7 @@ import { fetchDashboardData } from "./sheets";
 // "cached 5 minutes" in the footer; tabs.md mentions `revalidate = 300`).
 export const getCachedDashboardData = unstable_cache(
   fetchDashboardData,
-  ["dashboard-data:v2-clientmonths"],
+  ["dashboard-data:v3-metrics-vertical"],
   { revalidate: 300 },
 );
 
