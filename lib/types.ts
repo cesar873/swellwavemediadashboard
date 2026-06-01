@@ -162,6 +162,7 @@ export interface Receivable {
   currency: string;     // e.g. "USD"
   invoiceNumber: string;
   monthIso: string;     // derived from invoiceDate (else dueDate)
+  paidMonthIso: string; // derived from paidDate (for period-scoped Collected)
   raw: Record<string, string>;
 }
 

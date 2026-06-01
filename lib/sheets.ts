@@ -751,6 +751,7 @@ export async function fetchReceivables(): Promise<Receivable[]> {
       currency:    at(row, iCurrency),
       invoiceNumber: at(row, iInvNum),
       monthIso:    toMonthIsoLocal(invoiceDate) || toMonthIsoLocal(dueDate),
+      paidMonthIso: toMonthIsoLocal(at(row, iPaid)),
       raw,
     });
   }
