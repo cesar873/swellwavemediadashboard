@@ -95,7 +95,7 @@ export async function fetchDashboardData(): Promise<DashboardData> {
 
   // 2. Fetch all tabs in one batchGet — FORMATTED_VALUE so dates/months come back as
   //    readable strings ("Jan 2026") rather than serial numbers (45928).
-  const ranges = sheetList.map(s => `'${s.properties?.title}'!A1:AJ500`);
+  const ranges = sheetList.map(s => `'${s.properties?.title}'!A1:BH500`);
   const batchRes = await sheets.spreadsheets.values.batchGet({
     spreadsheetId: SPREADSHEET_ID,
     ranges,
@@ -134,10 +134,13 @@ export async function fetchDashboardData(): Promise<DashboardData> {
     const isr = findRow(plGrid, 'Income Summary')?.row ?? [];
     bestMonthRow = isr;
   }
+  // Read every month column in the header (cap raised well past the old 6 so
+  // June and any later months are included). Strict MON_RE so stray "2026 YTD"
+  // style cells don't get mistaken for months.
   const monthCols = bestMonthRow
     .map(parseStr)
-    .filter(s => MON_RE.test(s) || s.includes('20'))
-    .slice(0, 6);
+    .filter(s => MON_RE.test(s))
+    .slice(0, 36);
 
   const N = monthCols.length || 4;
 
@@ -672,8 +675,17 @@ export async function fetchReceivables(): Promise<Receivable[]> {
 
   const iClient   = findCol(/^client\b|client name|customer|account name/);
   const iService  = findCol(/service|product|engagement/);
-  const iAmount   = findCol(/^amount$|^total$|invoice amount|invoice value|amount due|^value$|gross/);
-  const iOpen     = findCol(/open\s*amount|outstanding|balance|^open$/);
+  // Open/outstanding column is resolved FIRST so the (deliberately broad)
+  // amount matcher below can exclude it and never shadow it.
+  const iOpen     = findCol(/open\s*amount|^open$|outstanding|balance remaining|amount outstanding/);
+  // Amount = the invoice's gross/total value. Kept broad (matches "Amount",
+  // "Total", "Total Amount", "Invoice Total", "Gross", "Amount (USD)", …) so
+  // paid invoices still carry their value — a too-strict regex here is what
+  // zeroed out Collected. Excludes the open column + the bound status/notes.
+  const iAmount   = hdr.findIndex((c, i) =>
+    i !== RECEIVABLE_STATUS_COL && i !== RECEIVABLE_NOTES_COL && i !== iOpen &&
+    /amount|total|invoice value|gross|^value$/.test(parseStr(c).toLowerCase()),
+  );
   const iInvDate  = findCol(/invoice date|issue date|^date$|created|bill date/);
   const iSent     = findCol(/sent/);
   const iDueDate  = findCol(/due/);

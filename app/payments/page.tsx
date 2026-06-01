@@ -48,7 +48,7 @@ export default async function PaymentsPage() {
   const overdueTotal = overdue.reduce((a, r) => a + openAmt(r), 0);
   const dueNext7Total = dueNext7.reduce((a, r) => a + openAmt(r), 0);
   const pipelineTotal = pipeline.reduce((a, r) => a + (r.amount || 0), 0);
-  const collectedTotal = collected.reduce((a, r) => a + (r.amount || 0), 0);
+  const collectedTotal = collected.reduce((a, r) => a + (r.amount || r.openAmount || 0), 0);
   const worstOverdue = overdue.reduce((m, r) => Math.max(m, r.daysOverdue), 0);
 
   return (
