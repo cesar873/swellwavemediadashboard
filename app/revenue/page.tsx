@@ -7,7 +7,6 @@ import { CardShell } from "@/components/ui/CardShell";
 import { SectionTitle } from "@/components/ui/SectionTitle";
 import { WhatToDoNext, type Insight } from "@/components/insights/WhatToDoNext";
 import { StackedBarChart } from "@/components/charts/StackedBarChart";
-import { RankedBarChart } from "@/components/charts/RankedBarChart";
 import { MoverCard } from "@/components/insights/MoverCard";
 import { MonthOverMonthTable, type MoMRow } from "@/components/tables/MonthOverMonthTable";
 import { bootstrapPage, sumAt, type PageSearchParams } from "@/lib/page-bootstrap";
@@ -168,17 +167,6 @@ export default async function RevenuePage({ searchParams }: Props) {
   });
   const stackedSeries = Object.keys(byService).map(svc => ({ key: svc, label: svc }));
 
-  // ── Secondary: breakdown for the single-month picker (so the snapshot
-  //    cards and the breakdown cards both reflect the same month).
-  const breakdownIdx = selectedMonthIndex >= 0
-    ? selectedMonthIndex
-    : selectedIndices[selectedIndices.length - 1];
-  const byIndustry = aggForMonth(clientRows, breakdownIdx, c => c.pod || "Unspecified");
-  const bySource   = aggForMonth(clientRows, breakdownIdx, c => c.source || "Unspecified");
-  const byPod      = aggForMonth(clientRows, breakdownIdx, c => c.pod || "Unspecified");
-  void byIndustry;
-  void byPod;
-
   // ── Main table: client × service MoM ─────────────────────────────────────
   const tableRows: MoMRow[] = clientRows.map((c, idx) => {
     const monthly: Record<string, number> = {};
@@ -314,27 +302,6 @@ export default async function RevenuePage({ searchParams }: Props) {
           </CardShell>
         </section>
 
-        <section className="mt-6 grid grid-cols-1 gap-4 lg:grid-cols-2">
-          <CardShell title="By source" subtitle={`Snapshot · ${selectedMonthLabel}`}>
-            <RankedBarChart
-              data={bySource}
-              color="#22c55e"
-              format="currency"
-              height={280}
-              maxItems={10}
-            />
-          </CardShell>
-          <CardShell title="By pod" subtitle={`Snapshot · ${selectedMonthLabel}`}>
-            <RankedBarChart
-              data={byPod}
-              color="#c084fc"
-              format="currency"
-              height={280}
-              maxItems={10}
-            />
-          </CardShell>
-        </section>
-
         <section className="mt-8 grid grid-cols-1 gap-4 lg:grid-cols-2">
           <MoverCard
             title="Top growers"
@@ -370,20 +337,4 @@ export default async function RevenuePage({ searchParams }: Props) {
       </div>
     </>
   );
-}
-
-function aggForMonth(
-  clients: Array<{ monthlyRevenue: number[]; service?: string; source?: string; pod?: string }>,
-  monthIdx: number,
-  pick: (c: { service?: string; source?: string; pod?: string }) => string,
-): Array<{ label: string; value: number }> {
-  const agg = new Map<string, number>();
-  for (const c of clients) {
-    const k = pick(c) || "Unspecified";
-    agg.set(k, (agg.get(k) ?? 0) + (c.monthlyRevenue[monthIdx] ?? 0));
-  }
-  return [...agg.entries()]
-    .map(([label, value]) => ({ label, value }))
-    .filter(x => x.value > 0)
-    .sort((a, b) => b.value - a.value);
 }
