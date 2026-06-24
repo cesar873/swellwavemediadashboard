@@ -850,28 +850,67 @@ async function resolveTabTitle(
   return fallback;
 }
 
+// A clarification header row has both a "Question" and a "Category" column.
+// (The plain expense Transactions tab has Category but no Question, so it
+// won't be mistaken for the bookkeeping queue.)
+function isBookkeepingHeaderRow(row: Row): boolean {
+  const joined = (row ?? []).map(c => parseStr(c).toLowerCase()).join('|');
+  return joined.includes('question') && joined.includes('categor');
+}
+
+// Find the tab + header-row index that holds the clarification queue, wherever
+// it lives and whatever the tab is named. Returns null if no tab has it.
+async function findBookkeepingBlock(
+  sheets: ReturnType<typeof google.sheets>,
+): Promise<{ title: string; grid: Grid; headerRow: number } | null> {
+  let titles: string[] = [];
+  try {
+    const meta = await sheets.spreadsheets.get({ spreadsheetId: SPREADSHEET_ID });
+    titles = (meta.data.sheets ?? [])
+      .map(s => s.properties?.title)
+      .filter((t): t is string => !!t);
+  } catch {
+    return null;
+  }
+  if (!titles.length) return null;
+
+  let grids: { title: string; grid: Grid }[] = [];
+  try {
+    const batch = await sheets.spreadsheets.values.batchGet({
+      spreadsheetId: SPREADSHEET_ID,
+      ranges: titles.map(t => `'${t}'!A1:AB500`),
+      valueRenderOption: 'FORMATTED_VALUE',
+    });
+    grids = (batch.data.valueRanges ?? []).map((vr, i) => ({
+      title: titles[i],
+      grid: (vr.values ?? []) as Grid,
+    }));
+  } catch {
+    return null;
+  }
+
+  let best: { title: string; grid: Grid; headerRow: number } | null = null;
+  let bestScore = -1;
+  for (const g of grids) {
+    const hr = g.grid.findIndex((row, i) => i < 40 && isBookkeepingHeaderRow(row));
+    if (hr < 0) continue;
+    // Prefer a tab literally named like "bookkeeping".
+    const score = g.title.toLowerCase().includes('bookkeep') ? 2 : 1;
+    if (score > bestScore) { bestScore = score; best = { title: g.title, grid: g.grid, headerRow: hr }; }
+  }
+  return best;
+}
+
 export async function fetchBookkeeping(): Promise<BookkeepingData> {
   const auth = getAuth();
   const sheets = google.sheets({ version: 'v4', auth });
-  const tabTitle = await resolveTabTitle(sheets, 'bookkeep', 'Bookkeeping');
 
-  let grid: Grid = [];
-  try {
-    const res = await sheets.spreadsheets.values.get({
-      spreadsheetId: SPREADSHEET_ID,
-      range: `'${tabTitle}'!A1:AB500`,
-      valueRenderOption: 'FORMATTED_VALUE',
-    });
-    grid = (res.data.values ?? []) as Grid;
-  } catch {
-    return { coa: [], transactions: [], hasComment: false };
-  }
-  if (grid.length < 1) return { coa: [], transactions: [], hasComment: false };
+  const block = await findBookkeepingBlock(sheets);
+  if (!block) return { coa: [], transactions: [], hasComment: false };
+  const { grid, headerRow } = block;
 
-  // Map every column by its header (case-insensitive). The sheet layout:
-  //   Date · Transaction ID · Type · Account Code · Category(bookkeeper) ·
-  //   Description · Question · Amount · Account · Category(client, orange) · [Comment]
-  const hdr = grid[0] ?? [];
+  // Map columns by header (case-insensitive) from the located header row.
+  const hdr = grid[headerRow] ?? [];
   const headerOf = (i: number) => parseStr(hdr[i]).toLowerCase();
   const find = (re: RegExp) => hdr.findIndex((_, i) => re.test(headerOf(i)));
   const findLast = (re: RegExp) => {
@@ -898,10 +937,10 @@ export async function fetchBookkeeping(): Promise<BookkeepingData> {
   // Comment / answer column (client-writeable), if the sheet has one.
   const iComment = findLast(/comment|answer|response|client note/);
 
-  // Dropdown options: distinct non-empty values already present in either
-  // Category column across all rows (the de-facto chart of accounts).
+  // Dropdown options: distinct non-empty values already in the Category
+  // columns across all data rows (the de-facto chart of accounts).
   const coaSet = new Set<string>();
-  for (let r = 1; r < grid.length; r++) {
+  for (let r = headerRow + 1; r < grid.length; r++) {
     for (const c of catCols) {
       const v = parseStr(grid[r]?.[c]);
       if (v) coaSet.add(v);
@@ -912,9 +951,8 @@ export async function fetchBookkeeping(): Promise<BookkeepingData> {
   const at = (row: Row, i: number) => (i >= 0 ? parseStr(row[i]) : '');
 
   const transactions: BookkeepingTxn[] = [];
-  for (let r = 1; r < grid.length; r++) {
+  for (let r = headerRow + 1; r < grid.length; r++) {
     const row = grid[r] ?? [];
-    // Real transaction row: has a txn id, description, amount, or date.
     const txnId = at(row, iTxnId);
     const desc = at(row, iDesc);
     const amountStr = at(row, iAmount);
@@ -922,7 +960,7 @@ export async function fetchBookkeeping(): Promise<BookkeepingData> {
     if (!txnId && !desc && !amountStr && !dateStr) continue;
 
     transactions.push({
-      rowNumber:    r + 1,
+      rowNumber:    r + 1, // grid is read from A1, so grid index r → sheet row r+1
       date:         dateStr,
       transactionId: txnId,
       type:         at(row, iType),
@@ -949,7 +987,9 @@ export async function writeBookkeepingCell(
 ): Promise<void> {
   const auth = getAuth();
   const sheets = google.sheets({ version: 'v4', auth });
-  const tabTitle = await resolveTabTitle(sheets, 'bookkeep', 'Bookkeeping');
+  // Target the same tab the reader located (name-agnostic).
+  const block = await findBookkeepingBlock(sheets);
+  const tabTitle = block?.title ?? (await resolveTabTitle(sheets, 'bookkeep', 'Bookkeeping'));
   const a1 = `'${tabTitle}'!${colLetter(colIndex)}${rowNumber}`;
   await sheets.spreadsheets.values.update({
     spreadsheetId: SPREADSHEET_ID,
