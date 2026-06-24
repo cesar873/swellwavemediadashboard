@@ -33,7 +33,7 @@ export default async function PaymentsPage({ searchParams }: Props) {
   }
 
   // Bookkeeping (Transactions clarification) — optional; toggle hides if empty.
-  let bookkeeping: BookkeepingData = { coa: [], transactions: [] };
+  let bookkeeping: BookkeepingData = { coa: [], transactions: [], hasComment: false };
   try {
     bookkeeping = await fetchBookkeeping();
   } catch {

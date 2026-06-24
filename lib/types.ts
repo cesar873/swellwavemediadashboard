@@ -173,18 +173,24 @@ export interface Receivable {
 export interface BookkeepingTxn {
   rowNumber: number;
   date: string;
-  vendor: string;
+  transactionId: string;
+  type: string;
+  accountCode: string;
   description: string;
+  question: string;        // the bookkeeper's question to the client
   amount: number;
-  account: string;    // column M
-  category: string;   // column N (client-writeable)
-  comment: string;    // column O (client-writeable)
+  account: string;
+  category: string;        // client-writeable (the orange Category column)
+  comment: string;         // client-writeable (Comment/Answer column, if present)
+  categoryColIndex: number; // 0-based sheet col to write category back to
+  commentColIndex: number;  // 0-based sheet col for comment; -1 if none
   raw: Record<string, string>;
 }
 
 export interface BookkeepingData {
-  coa: string[];               // chart of accounts (col B, row 2+)
+  coa: string[];               // chart of accounts (dropdown options)
   transactions: BookkeepingTxn[];
+  hasComment: boolean;         // whether a Comment column exists
 }
 
 export interface DashboardData {

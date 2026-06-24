@@ -162,7 +162,6 @@ export function ActionsCenter({
   const [mode, setMode] = useState<"invoices" | "transactions">("invoices");
 
   const txns = bookkeeping?.transactions ?? [];
-  const coa = bookkeeping?.coa ?? [];
   const hasTxns = txns.length > 0;
   const awaitingClarify = transactionsAwaitingCount(txns);
   const isTxn = mode === "transactions" && hasTxns;
@@ -266,7 +265,7 @@ export function ActionsCenter({
 
       {isTxn ? (
         <div className="overflow-x-auto">
-          <TransactionsTable transactions={txns} coa={coa} />
+          <TransactionsTable data={bookkeeping ?? { coa: [], transactions: [], hasComment: false }} />
         </div>
       ) : (
       <div className={cn("overflow-x-auto", showBreakdown && "pb-1")}>

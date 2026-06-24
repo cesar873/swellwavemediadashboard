@@ -1,5 +1,5 @@
 import { google } from 'googleapis';
-import type { DashboardData, PLData, ExpenseCategory, COGSCategory, ClientRow, ClientProfit, TeamMember, TeamProfitRow, ServiceCapacity, Transaction, BudgetRow, MetricsData, Receivable, BookkeepingTxn } from './types';
+import type { DashboardData, PLData, ExpenseCategory, COGSCategory, ClientRow, ClientProfit, TeamMember, TeamProfitRow, ServiceCapacity, Transaction, BudgetRow, MetricsData, Receivable, BookkeepingTxn, BookkeepingData } from './types';
 
 const SPREADSHEET_ID = '1JkaZ1qfrWqEwmSmG-sjdgQ0a3ZaQHtD5zl_RgehqdeY';
 
@@ -829,16 +829,9 @@ export const RECEIVABLE_COLS = {
 };
 
 // ── Bookkeeping / Transactions clarification (Phase Operations) ───────────────
-// Layout (buildout §Two-way sync):
-//   col B (idx 1)  = Chart of Accounts (row 2+)
-//   E:L (idx 4-11) = bookkeeper context (Date / Vendor / Description / Amount …)
-//   col M (idx 12) = Account  (bound absolutely — header ignored)
-//   col N (idx 13) = Category (client-writeable; validated against col B)
-//   col O (idx 14) = Comment  (client-writeable, free text)
-const BK_ACCOUNT_COL  = 12; // M
-const BK_CATEGORY_COL = 13; // N
-const BK_COMMENT_COL  = 14; // O
-export const BOOKKEEPING_COLS = { category: BK_CATEGORY_COL, comment: BK_COMMENT_COL };
+// All columns are matched by HEADER NAME (the sheet's actual layout has a
+// Question column + two Category columns — the last is the client-writeable
+// orange one). Write targets are carried per-row on the BookkeepingTxn.
 
 async function resolveTabTitle(
   sheets: ReturnType<typeof google.sheets>,
@@ -857,7 +850,7 @@ async function resolveTabTitle(
   return fallback;
 }
 
-export async function fetchBookkeeping(): Promise<{ coa: string[]; transactions: BookkeepingTxn[] }> {
+export async function fetchBookkeeping(): Promise<BookkeepingData> {
   const auth = getAuth();
   const sheets = google.sheets({ version: 'v4', auth });
   const tabTitle = await resolveTabTitle(sheets, 'bookkeep', 'Bookkeeping');
@@ -866,67 +859,87 @@ export async function fetchBookkeeping(): Promise<{ coa: string[]; transactions:
   try {
     const res = await sheets.spreadsheets.values.get({
       spreadsheetId: SPREADSHEET_ID,
-      range: `'${tabTitle}'!A1:O500`,
+      range: `'${tabTitle}'!A1:AB500`,
       valueRenderOption: 'FORMATTED_VALUE',
     });
     grid = (res.data.values ?? []) as Grid;
   } catch {
-    return { coa: [], transactions: [] };
+    return { coa: [], transactions: [], hasComment: false };
   }
-  if (grid.length < 1) return { coa: [], transactions: [] };
+  if (grid.length < 1) return { coa: [], transactions: [], hasComment: false };
 
-  // Chart of accounts — column B, row 2+, deduped + sorted alpha.
+  // Map every column by its header (case-insensitive). The sheet layout:
+  //   Date · Transaction ID · Type · Account Code · Category(bookkeeper) ·
+  //   Description · Question · Amount · Account · Category(client, orange) · [Comment]
+  const hdr = grid[0] ?? [];
+  const headerOf = (i: number) => parseStr(hdr[i]).toLowerCase();
+  const find = (re: RegExp) => hdr.findIndex((_, i) => re.test(headerOf(i)));
+  const findLast = (re: RegExp) => {
+    let idx = -1;
+    hdr.forEach((_, i) => { if (re.test(headerOf(i))) idx = i; });
+    return idx;
+  };
+  const findAll = (re: RegExp) => hdr.map((_, i) => i).filter(i => re.test(headerOf(i)));
+
+  const iDate     = find(/^date$|date\b/);
+  const iTxnId    = find(/transaction id|txn id|transaction #/);
+  const iType     = find(/^type$/);
+  const iAcctCode = find(/account code/);
+  const iDesc     = find(/descrip/);
+  const iQuestion = find(/question/);
+  const iAmount   = find(/amount|total/);
+  const iAccount  = hdr.findIndex((_, i) => /^account$/.test(headerOf(i))); // exact, not "Account Code"
+
+  // Category columns: the LAST one is the client-writeable (orange) input.
+  const catCols = findAll(/categor/);
+  const iCatClient = catCols.length ? catCols[catCols.length - 1] : -1;
+  const iCatBook   = catCols.length > 1 ? catCols[0] : -1;
+
+  // Comment / answer column (client-writeable), if the sheet has one.
+  const iComment = findLast(/comment|answer|response|client note/);
+
+  // Dropdown options: distinct non-empty values already present in either
+  // Category column across all rows (the de-facto chart of accounts).
   const coaSet = new Set<string>();
   for (let r = 1; r < grid.length; r++) {
-    const v = parseStr(grid[r]?.[1]);
-    if (v) coaSet.add(v);
+    for (const c of catCols) {
+      const v = parseStr(grid[r]?.[c]);
+      if (v) coaSet.add(v);
+    }
   }
   const coa = [...coaSet].sort((a, b) => a.localeCompare(b));
 
-  // Classify the bookkeeper context columns E:L by header.
-  const hdr = grid[0] ?? [];
-  const headerOf = (i: number) => parseStr(hdr[i]);
-  const findIn = (re: RegExp) => {
-    for (let i = 4; i <= 11; i++) if (re.test(headerOf(i).toLowerCase())) return i;
-    return -1;
-  };
-  const iDate = findIn(/^date|posted|transaction date/);
-  const iVendor = findIn(/vendor|merchant|payee|name/);
-  const iDesc = findIn(/desc|memo|detail/);
-  const iAmount = findIn(/amount|total/);
+  const at = (row: Row, i: number) => (i >= 0 ? parseStr(row[i]) : '');
 
   const transactions: BookkeepingTxn[] = [];
   for (let r = 1; r < grid.length; r++) {
     const row = grid[r] ?? [];
-    // A real unclear-transaction row has at least one of E:M filled.
-    let hasContext = false;
-    for (let c = 4; c <= 12; c++) {
-      if (parseStr(row[c]) !== '') { hasContext = true; break; }
-    }
-    if (!hasContext) continue;
-
-    const raw: Record<string, string> = {};
-    for (let c = 4; c <= 11; c++) {
-      if (c === iDate || c === iVendor || c === iDesc || c === iAmount) continue;
-      const h = headerOf(c);
-      const v = parseStr(row[c]);
-      if (h && v) raw[h] = v;
-    }
+    // Real transaction row: has a txn id, description, amount, or date.
+    const txnId = at(row, iTxnId);
+    const desc = at(row, iDesc);
+    const amountStr = at(row, iAmount);
+    const dateStr = at(row, iDate);
+    if (!txnId && !desc && !amountStr && !dateStr) continue;
 
     transactions.push({
-      rowNumber:   r + 1,
-      date:        iDate   >= 0 ? parseStr(row[iDate])   : '',
-      vendor:      iVendor >= 0 ? parseStr(row[iVendor]) : '',
-      description: iDesc   >= 0 ? parseStr(row[iDesc])   : '',
-      amount:      iAmount >= 0 ? parseNum(row[iAmount]) : 0,
-      account:     parseStr(row[BK_ACCOUNT_COL]),
-      category:    parseStr(row[BK_CATEGORY_COL]),
-      comment:     parseStr(row[BK_COMMENT_COL]),
-      raw,
+      rowNumber:    r + 1,
+      date:         dateStr,
+      transactionId: txnId,
+      type:         at(row, iType),
+      accountCode:  at(row, iAcctCode),
+      description:  desc,
+      question:     at(row, iQuestion),
+      amount:       iAmount >= 0 ? parseNum(row[iAmount]) : 0,
+      account:      at(row, iAccount),
+      category:     at(row, iCatClient),
+      comment:      at(row, iComment),
+      categoryColIndex: iCatClient,
+      commentColIndex:  iComment,
+      raw: iCatBook >= 0 ? { "Bookkeeper category": at(row, iCatBook) } : {},
     });
   }
 
-  return { coa, transactions };
+  return { coa, transactions, hasComment: iComment >= 0 };
 }
 
 export async function writeBookkeepingCell(

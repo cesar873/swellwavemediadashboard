@@ -5,7 +5,6 @@ import {
   writeReceivableCell,
   writeBookkeepingCell,
   RECEIVABLE_COLS,
-  BOOKKEEPING_COLS,
   STATUS_AGENCY_REVIEW,
 } from "@/lib/sheets";
 
@@ -62,13 +61,16 @@ export async function saveReceivableNote(
 }
 
 // ── Transactions clarification (Bookkeeping tab) ─────────────────────────────
-// Client picks a category from the CoA → written to col N. Empty clears it.
+// The category / comment write columns are resolved by header at read time and
+// carried per-row, so the actions take the explicit 0-based column index.
 export async function updateTransactionCategory(
   rowNumber: number,
+  colIndex: number,
   value: string,
 ): Promise<ActionResult> {
+  if (colIndex < 0) return { ok: false, error: "No category column found in the Bookkeeping tab." };
   try {
-    await writeBookkeepingCell(rowNumber, BOOKKEEPING_COLS.category, value);
+    await writeBookkeepingCell(rowNumber, colIndex, value);
     revalidatePath("/payments");
     return { ok: true };
   } catch (e) {
@@ -76,13 +78,14 @@ export async function updateTransactionCategory(
   }
 }
 
-// Client writes a free-text comment → written to col O (replace, not append).
 export async function updateTransactionComment(
   rowNumber: number,
+  colIndex: number,
   text: string,
 ): Promise<ActionResult> {
+  if (colIndex < 0) return { ok: false, error: "No comment column found in the Bookkeeping tab." };
   try {
-    await writeBookkeepingCell(rowNumber, BOOKKEEPING_COLS.comment, text);
+    await writeBookkeepingCell(rowNumber, colIndex, text);
     revalidatePath("/payments");
     return { ok: true };
   } catch (e) {
