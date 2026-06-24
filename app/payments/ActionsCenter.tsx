@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import * as Popover from "@radix-ui/react-popover";
 import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
 import { Check, ChevronDown, Eye, EyeOff, Loader2, StickyNote } from "lucide-react";
-import type { Receivable } from "@/lib/types";
+import type { Receivable, BookkeepingData } from "@/lib/types";
 import { cn, formatCurrency } from "@/lib/utils";
 import {
   STATUS_ENUM,
@@ -13,6 +13,7 @@ import {
   statusPillStyle,
 } from "./shared";
 import { approveReceivable, setReceivableStatus, saveReceivableNote } from "./actions";
+import { TransactionsTable, transactionsAwaitingCount } from "./TransactionsCenter";
 
 function fmtDate(s: string): string {
   if (!s) return "—";
@@ -150,8 +151,21 @@ function num(n: number): string {
   return n ? formatCurrency(n, { compact: true }) : "—";
 }
 
-export function ActionsCenter({ receivables }: { receivables: Receivable[] }) {
+export function ActionsCenter({
+  receivables,
+  bookkeeping,
+}: {
+  receivables: Receivable[];
+  bookkeeping?: BookkeepingData;
+}) {
   const [showBreakdown, setShowBreakdown] = useState(false);
+  const [mode, setMode] = useState<"invoices" | "transactions">("invoices");
+
+  const txns = bookkeeping?.transactions ?? [];
+  const coa = bookkeeping?.coa ?? [];
+  const hasTxns = txns.length > 0;
+  const awaitingClarify = transactionsAwaitingCount(txns);
+  const isTxn = mode === "transactions" && hasTxns;
 
   const awaiting = receivables.filter(r => statusKind(r.status) === "review-client");
   const scheduled = receivables.filter(r => {
@@ -213,17 +227,48 @@ export function ActionsCenter({ receivables }: { receivables: Receivable[] }) {
       <div className="mb-4 flex items-center justify-between gap-3">
         <div>
           <div className="text-[10px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">Pipeline</div>
-          <h2 className="anton text-[20px] tracking-[0.04em]">Upcoming invoices</h2>
+          <h2 className="anton text-[20px] tracking-[0.04em]">{isTxn ? "Transactions" : "Upcoming invoices"}</h2>
         </div>
-        <button
-          onClick={() => setShowBreakdown(v => !v)}
-          className="inline-flex items-center gap-1.5 rounded-md border border-[var(--card-border)] px-3 py-1.5 text-[12px] text-foreground transition hover:bg-white/5"
-        >
-          {showBreakdown ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
-          {showBreakdown ? "Hide breakdown" : "Show breakdown"}
-        </button>
+        <div className="flex items-center gap-2">
+          {!isTxn && (
+            <button
+              onClick={() => setShowBreakdown(v => !v)}
+              className="inline-flex items-center gap-1.5 rounded-md border border-[var(--card-border)] px-3 py-1.5 text-[12px] text-foreground transition hover:bg-white/5"
+            >
+              {showBreakdown ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
+              {showBreakdown ? "Hide breakdown" : "Show breakdown"}
+            </button>
+          )}
+          {hasTxns && (
+            <div className="inline-flex rounded-md border border-[var(--card-border)] bg-white/5 p-0.5">
+              <button
+                onClick={() => setMode("invoices")}
+                className={cn("rounded px-2.5 py-1 text-[12px] font-medium transition", !isTxn ? "bg-[var(--blue)] text-white" : "text-muted-foreground hover:text-foreground")}
+              >
+                Invoices
+              </button>
+              <button
+                onClick={() => setMode("transactions")}
+                className={cn("relative inline-flex items-center gap-1.5 rounded px-2.5 py-1 text-[12px] font-medium transition", isTxn ? "bg-[var(--blue)] text-white" : "text-muted-foreground hover:text-foreground")}
+              >
+                Transactions
+                {awaitingClarify > 0 && (
+                  <span className="relative inline-flex h-4 min-w-4 items-center justify-center">
+                    {!isTxn && <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-[var(--red)] opacity-60" />}
+                    <span className="relative inline-flex h-4 min-w-4 items-center justify-center rounded-full bg-[var(--red)] px-1 text-[10px] font-semibold text-white">{awaitingClarify}</span>
+                  </span>
+                )}
+              </button>
+            </div>
+          )}
+        </div>
       </div>
 
+      {isTxn ? (
+        <div className="overflow-x-auto">
+          <TransactionsTable transactions={txns} coa={coa} />
+        </div>
+      ) : (
       <div className={cn("overflow-x-auto", showBreakdown && "pb-1")}>
         <table className="w-full border-separate border-spacing-0 text-[13px]">
           <thead>
@@ -258,6 +303,7 @@ export function ActionsCenter({ receivables }: { receivables: Receivable[] }) {
           </tbody>
         </table>
       </div>
+      )}
     </div>
   );
 }

@@ -3,7 +3,9 @@
 import { revalidatePath } from "next/cache";
 import {
   writeReceivableCell,
+  writeBookkeepingCell,
   RECEIVABLE_COLS,
+  BOOKKEEPING_COLS,
   STATUS_AGENCY_REVIEW,
 } from "@/lib/sheets";
 
@@ -52,6 +54,35 @@ export async function saveReceivableNote(
 ): Promise<ActionResult> {
   try {
     await writeReceivableCell(rowNumber, RECEIVABLE_COLS.notes, text);
+    revalidatePath("/payments");
+    return { ok: true };
+  } catch (e) {
+    return { ok: false, error: toError(e) };
+  }
+}
+
+// ── Transactions clarification (Bookkeeping tab) ─────────────────────────────
+// Client picks a category from the CoA → written to col N. Empty clears it.
+export async function updateTransactionCategory(
+  rowNumber: number,
+  value: string,
+): Promise<ActionResult> {
+  try {
+    await writeBookkeepingCell(rowNumber, BOOKKEEPING_COLS.category, value);
+    revalidatePath("/payments");
+    return { ok: true };
+  } catch (e) {
+    return { ok: false, error: toError(e) };
+  }
+}
+
+// Client writes a free-text comment → written to col O (replace, not append).
+export async function updateTransactionComment(
+  rowNumber: number,
+  text: string,
+): Promise<ActionResult> {
+  try {
+    await writeBookkeepingCell(rowNumber, BOOKKEEPING_COLS.comment, text);
     revalidatePath("/payments");
     return { ok: true };
   } catch (e) {

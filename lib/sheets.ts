@@ -1,5 +1,5 @@
 import { google } from 'googleapis';
-import type { DashboardData, PLData, ExpenseCategory, COGSCategory, ClientRow, ClientProfit, TeamMember, TeamProfitRow, ServiceCapacity, Transaction, BudgetRow, MetricsData, Receivable } from './types';
+import type { DashboardData, PLData, ExpenseCategory, COGSCategory, ClientRow, ClientProfit, TeamMember, TeamProfitRow, ServiceCapacity, Transaction, BudgetRow, MetricsData, Receivable, BookkeepingTxn } from './types';
 
 const SPREADSHEET_ID = '1JkaZ1qfrWqEwmSmG-sjdgQ0a3ZaQHtD5zl_RgehqdeY';
 
@@ -827,3 +827,121 @@ export const RECEIVABLE_COLS = {
   status: RECEIVABLE_STATUS_COL,
   notes: RECEIVABLE_NOTES_COL,
 };
+
+// ── Bookkeeping / Transactions clarification (Phase Operations) ───────────────
+// Layout (buildout §Two-way sync):
+//   col B (idx 1)  = Chart of Accounts (row 2+)
+//   E:L (idx 4-11) = bookkeeper context (Date / Vendor / Description / Amount …)
+//   col M (idx 12) = Account  (bound absolutely — header ignored)
+//   col N (idx 13) = Category (client-writeable; validated against col B)
+//   col O (idx 14) = Comment  (client-writeable, free text)
+const BK_ACCOUNT_COL  = 12; // M
+const BK_CATEGORY_COL = 13; // N
+const BK_COMMENT_COL  = 14; // O
+export const BOOKKEEPING_COLS = { category: BK_CATEGORY_COL, comment: BK_COMMENT_COL };
+
+async function resolveTabTitle(
+  sheets: ReturnType<typeof google.sheets>,
+  substr: string,
+  fallback: string,
+): Promise<string> {
+  try {
+    const meta = await sheets.spreadsheets.get({ spreadsheetId: SPREADSHEET_ID });
+    const match = (meta.data.sheets ?? []).find(
+      s => (s.properties?.title ?? '').toLowerCase().includes(substr),
+    );
+    if (match?.properties?.title) return match.properties.title;
+  } catch {
+    // fall through to default
+  }
+  return fallback;
+}
+
+export async function fetchBookkeeping(): Promise<{ coa: string[]; transactions: BookkeepingTxn[] }> {
+  const auth = getAuth();
+  const sheets = google.sheets({ version: 'v4', auth });
+  const tabTitle = await resolveTabTitle(sheets, 'bookkeep', 'Bookkeeping');
+
+  let grid: Grid = [];
+  try {
+    const res = await sheets.spreadsheets.values.get({
+      spreadsheetId: SPREADSHEET_ID,
+      range: `'${tabTitle}'!A1:O500`,
+      valueRenderOption: 'FORMATTED_VALUE',
+    });
+    grid = (res.data.values ?? []) as Grid;
+  } catch {
+    return { coa: [], transactions: [] };
+  }
+  if (grid.length < 1) return { coa: [], transactions: [] };
+
+  // Chart of accounts — column B, row 2+, deduped + sorted alpha.
+  const coaSet = new Set<string>();
+  for (let r = 1; r < grid.length; r++) {
+    const v = parseStr(grid[r]?.[1]);
+    if (v) coaSet.add(v);
+  }
+  const coa = [...coaSet].sort((a, b) => a.localeCompare(b));
+
+  // Classify the bookkeeper context columns E:L by header.
+  const hdr = grid[0] ?? [];
+  const headerOf = (i: number) => parseStr(hdr[i]);
+  const findIn = (re: RegExp) => {
+    for (let i = 4; i <= 11; i++) if (re.test(headerOf(i).toLowerCase())) return i;
+    return -1;
+  };
+  const iDate = findIn(/^date|posted|transaction date/);
+  const iVendor = findIn(/vendor|merchant|payee|name/);
+  const iDesc = findIn(/desc|memo|detail/);
+  const iAmount = findIn(/amount|total/);
+
+  const transactions: BookkeepingTxn[] = [];
+  for (let r = 1; r < grid.length; r++) {
+    const row = grid[r] ?? [];
+    // A real unclear-transaction row has at least one of E:M filled.
+    let hasContext = false;
+    for (let c = 4; c <= 12; c++) {
+      if (parseStr(row[c]) !== '') { hasContext = true; break; }
+    }
+    if (!hasContext) continue;
+
+    const raw: Record<string, string> = {};
+    for (let c = 4; c <= 11; c++) {
+      if (c === iDate || c === iVendor || c === iDesc || c === iAmount) continue;
+      const h = headerOf(c);
+      const v = parseStr(row[c]);
+      if (h && v) raw[h] = v;
+    }
+
+    transactions.push({
+      rowNumber:   r + 1,
+      date:        iDate   >= 0 ? parseStr(row[iDate])   : '',
+      vendor:      iVendor >= 0 ? parseStr(row[iVendor]) : '',
+      description: iDesc   >= 0 ? parseStr(row[iDesc])   : '',
+      amount:      iAmount >= 0 ? parseNum(row[iAmount]) : 0,
+      account:     parseStr(row[BK_ACCOUNT_COL]),
+      category:    parseStr(row[BK_CATEGORY_COL]),
+      comment:     parseStr(row[BK_COMMENT_COL]),
+      raw,
+    });
+  }
+
+  return { coa, transactions };
+}
+
+export async function writeBookkeepingCell(
+  rowNumber: number,
+  colIndex: number,
+  value: string,
+): Promise<void> {
+  const auth = getAuth();
+  const sheets = google.sheets({ version: 'v4', auth });
+  const tabTitle = await resolveTabTitle(sheets, 'bookkeep', 'Bookkeeping');
+  const a1 = `'${tabTitle}'!${colLetter(colIndex)}${rowNumber}`;
+  await sheets.spreadsheets.values.update({
+    spreadsheetId: SPREADSHEET_ID,
+    range: a1,
+    valueInputOption: 'USER_ENTERED',
+    requestBody: { values: [[value]] },
+  });
+}

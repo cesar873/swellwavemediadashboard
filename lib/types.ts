@@ -166,6 +166,27 @@ export interface Receivable {
   raw: Record<string, string>;
 }
 
+// Phase Operations — Transactions clarification (Bookkeeping tab).
+// Bookkeeper posts context in E:M (M = Account, absolute); client writes
+// Category (col N) + Comment (col O) through the dashboard. rowNumber is the
+// 1-based sheet row for write-back.
+export interface BookkeepingTxn {
+  rowNumber: number;
+  date: string;
+  vendor: string;
+  description: string;
+  amount: number;
+  account: string;    // column M
+  category: string;   // column N (client-writeable)
+  comment: string;    // column O (client-writeable)
+  raw: Record<string, string>;
+}
+
+export interface BookkeepingData {
+  coa: string[];               // chart of accounts (col B, row 2+)
+  transactions: BookkeepingTxn[];
+}
+
 export interface DashboardData {
   lastUpdated: string;
   pl: PLData;

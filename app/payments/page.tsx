@@ -6,11 +6,11 @@ import { KpiStat } from "@/components/ui/KpiStat";
 import { ActionsCenter } from "./ActionsCenter";
 import { OpenSummary } from "./OpenSummary";
 import { ArGrid } from "./ArGrid";
-import { fetchReceivables } from "@/lib/sheets";
+import { fetchReceivables, fetchBookkeeping } from "@/lib/sheets";
 import { bootstrapPage, type PageSearchParams } from "@/lib/page-bootstrap";
 import { formatCurrency } from "@/lib/utils";
 import { statusKind, isPaid } from "./shared";
-import type { Receivable } from "@/lib/types";
+import type { Receivable, BookkeepingData } from "@/lib/types";
 import type { Metadata } from "next";
 
 export const metadata: Metadata = { title: "Payments · SwellWave Finance" };
@@ -30,6 +30,14 @@ export default async function PaymentsPage({ searchParams }: Props) {
     receivables = await fetchReceivables();
   } catch (e) {
     loadError = e instanceof Error ? e.message : String(e);
+  }
+
+  // Bookkeeping (Transactions clarification) — optional; toggle hides if empty.
+  let bookkeeping: BookkeepingData = { coa: [], transactions: [] };
+  try {
+    bookkeeping = await fetchBookkeeping();
+  } catch {
+    // no bookkeeping tab → Transactions toggle simply won't show
   }
 
   // Global period filter (shared with the other tabs).
@@ -100,7 +108,7 @@ export default async function PaymentsPage({ searchParams }: Props) {
             </section>
 
             <section className="mt-8 grid grid-cols-1 gap-4 lg:grid-cols-10">
-              <div className="lg:col-span-6"><ActionsCenter receivables={receivables} /></div>
+              <div className="lg:col-span-6"><ActionsCenter receivables={receivables} bookkeeping={bookkeeping} /></div>
               <div className="lg:col-span-4"><OpenSummary receivables={receivables} /></div>
             </section>
 
