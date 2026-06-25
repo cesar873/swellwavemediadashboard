@@ -162,9 +162,13 @@ export function ActionsCenter({
   const [mode, setMode] = useState<"invoices" | "transactions">("invoices");
 
   const txns = bookkeeping?.transactions ?? [];
-  const hasTxns = txns.length > 0;
+  // Show the Transactions view whenever the Bookkeeping clarification block
+  // exists (a chart of accounts is present), even if no rows are queued yet —
+  // it then shows an empty "Awaiting clarification" state, ready for the
+  // bookkeeper to post transactions.
+  const hasBookkeeping = (bookkeeping?.coa?.length ?? 0) > 0 || txns.length > 0;
   const awaitingClarify = transactionsAwaitingCount(txns);
-  const isTxn = mode === "transactions" && hasTxns;
+  const isTxn = mode === "transactions" && hasBookkeeping;
 
   const awaiting = receivables.filter(r => statusKind(r.status) === "review-client");
   const scheduled = receivables.filter(r => {
@@ -238,7 +242,7 @@ export function ActionsCenter({
               {showBreakdown ? "Hide breakdown" : "Show breakdown"}
             </button>
           )}
-          {hasTxns && (
+          {hasBookkeeping && (
             <div className="inline-flex rounded-md border border-[var(--card-border)] bg-white/5 p-0.5">
               <button
                 onClick={() => setMode("invoices")}
