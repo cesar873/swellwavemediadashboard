@@ -1,7 +1,10 @@
 import type { Metadata } from "next";
 import { Anton, DM_Sans } from "next/font/google";
 import { Suspense } from "react";
+import { cookies } from "next/headers";
 import { Nav } from "@/components/layout/Nav";
+import { PasswordGate } from "@/components/auth/PasswordGate";
+import { AUTH_COOKIE, authToken } from "@/lib/auth";
 import "./globals.css";
 
 const anton = Anton({
@@ -25,16 +28,25 @@ export const metadata: Metadata = {
 
 export const dynamic = "force-dynamic";
 
-export default function RootLayout({
+export default async function RootLayout({
   children,
 }: Readonly<{ children: React.ReactNode }>) {
+  const store = await cookies();
+  const authed = store.get(AUTH_COOKIE)?.value === authToken();
+
   return (
     <html lang="en" className={`${anton.variable} ${dmSans.variable}`}>
       <body>
-        <Suspense fallback={null}>
-          <Nav />
-        </Suspense>
-        {children}
+        {authed ? (
+          <>
+            <Suspense fallback={null}>
+              <Nav />
+            </Suspense>
+            {children}
+          </>
+        ) : (
+          <PasswordGate />
+        )}
       </body>
     </html>
   );
